@@ -172,4 +172,4 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     if not OWNER or OWNER == MCP:
         raise SystemExit("Configure distinct human and MCP authentication; startup refused")
-    ThreadingHTTPServer(("0.0.0.0",int(os.environ.get("PORT","8799"))),Handler).serve_forever()
+    ThreadingHTTPServer((os.environ.get("BIND_HOST","127.0.0.1"),int(os.environ.get("PORT","8799"))),Handler).serve_forever()
