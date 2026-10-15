@@ -166,4 +166,33 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(self.req('/api/session/logout',{},owner=False,cookie=cookie)[0],200)
         self.assertEqual(self.req('/api/state',owner=False,cookie=cookie)[0],401)
 
+    def test_disconnect_cancels_unidentified_connect_before_callback(self):
+        aid=self.connect();p=self.start(True)  # generic Connect, account=None
+        self.assertIn(p['state'],self.b.pending)
+        self.assertEqual(self.req('/api/google/disconnect',{'account':aid})[0],200)
+        self.assertNotIn(p['state'],self.b.pending)
+        calls=len(self.fake.forms)
+        self.assertEqual(self.finish(p)[0],400)
+        self.assertEqual(len(self.fake.forms),calls)
+        self.assertEqual(self.b.status()['accounts'],[])
+        self.assertEqual(Broker(self.config,self.fake).status()['accounts'],[])
+        # Reconnecting intentionally AFTER disconnect remains supported.
+        fresh=self.start(True);self.assertEqual(self.finish(fresh)[0],200)
+        self.assertEqual(self.b.status()['accounts'][0]['id'],aid)
+
+    def test_owner_audio_uses_separate_media_rpc(self):
+        from music_adapter import MusicAdapter
+        self.assertNotIn('audio_probe',self.s.operations)
+        with patch.dict(os.environ,{'MEDIA_WORKER_TOKEN':'z'*40}):
+            media=service('media')
+        threading.Thread(target=media.serve_forever,daemon=True).start()
+        try:
+            with patch.object(self.ui,'media',RPC('127.0.0.1',media.server_port,'z'*40)),patch.object(MusicAdapter,'probe',return_value={'fixture':True}):
+                self.assertEqual(self.req('/api/music/audio-probe',{'video_id':'W8VdVY8diqs'})[:2],(200,{'fixture':True}))
+                self.assertEqual(self.req('/api/music/audio-probe',{'video_id':'W8VdVY8diqs'},owner=False)[0],401)
+            with self.assertRaisesRegex(Denied,'operation_denied'):
+                self.ui.broker.call('audio_probe',video_id='W8VdVY8diqs')
+        finally:
+            media.shutdown();media.server_close()
+
 if __name__=='__main__':unittest.main()

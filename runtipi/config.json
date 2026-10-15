@@ -31,6 +31,7 @@
     {"type":"password","env_variable":"MUSIC_ADAPTER_TOKEN","label":"Typed Music catalog caller token","required":true,"min":32},
     {"type":"password","env_variable":"BROKER_TOKEN","label":"Internal broker token","required":true,"min":32},
     {"type":"password","env_variable":"PRIVATE_WORKER_TOKEN","label":"Internal private worker token","required":true,"min":32},
+    {"type":"password","env_variable":"MEDIA_WORKER_TOKEN","label":"Internal credential-free media worker token","required":true,"min":32},
     {"type":"password","env_variable":"TINFOIL_API_KEY","label":"Tinfoil API key (synthetic chat only)","required":false},
     {"type":"text","env_variable":"PRIVATE_ROUTE_CONFIGURED","label":"Private key configured (true/false)","default":"false","required":false},
     {"type":"text","env_variable":"WIZARD_TRUSTED_HOSTS","label":"Trusted route hosts (comma separated)","default":"localhost,127.0.0.1","required":false},

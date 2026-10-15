@@ -1,4 +1,4 @@
-"""One image, two non-public service roles. Only fixed typed RPC operations."""
+"""Separate non-public service roles. Only fixed typed RPC operations."""
 import hmac
 import json
 import os
@@ -33,14 +33,19 @@ class ServiceHandler(BaseHTTPRequestHandler):
 
 def service(role, broker=None):
     if role=='google':
-        b=broker or Broker(dict(os.environ)); music=MusicAdapter(); mutex=threading.Lock()
+        b=broker or Broker(dict(os.environ))
+        operations={'status':b.status,'start':b.start,'finish':b.finish,'bind':b.bind,'unlink':b.unlink,
+                    'disconnect':b.disconnect,'catalog':b.catalog,'music_catalog':b.music_catalog}
+        port,token=8800,os.environ.get('BROKER_TOKEN','')
+    elif role=='media':
+        # This role has no Google volume, broker token, or credential-bearing env.
+        music=MusicAdapter(); mutex=threading.Lock()
         def probe(video_id):
             if not mutex.acquire(blocking=False): raise Denied('worker_busy')
             try: return music.probe(video_id)
             finally: mutex.release()
-        operations={'status':b.status,'start':b.start,'finish':b.finish,'bind':b.bind,'unlink':b.unlink,
-                    'disconnect':b.disconnect,'catalog':b.catalog,'music_catalog':b.music_catalog,'audio_probe':probe}
-        port,token=8800,os.environ.get('BROKER_TOKEN','')
+        operations={'audio_probe':probe}
+        port,token=8802,os.environ.get('MEDIA_WORKER_TOKEN','')
     elif role=='private':
         model=PrivateModel(os.environ.get('TINFOIL_API_KEY','')); mutex=threading.Lock()
         def summarize(thread):

@@ -28,11 +28,12 @@ services:
       BROKER_TOKEN: ${BROKER_TOKEN:?Required}
       PRIVATE_WORKER_TOKEN: ${PRIVATE_WORKER_TOKEN:?Required}
       PRIVATE_ROUTE_CONFIGURED: ${PRIVATE_ROUTE_CONFIGURED:-false}
+      MEDIA_WORKER_TOKEN: ${MEDIA_WORKER_TOKEN:?Required}
       ISOLATED_PACKAGE: "true"
       WIZARD_TRUSTED_HOSTS: ${WIZARD_TRUSTED_HOSTS:-localhost,127.0.0.1}
       WIZARD_TRUSTED_ORIGINS: ${WIZARD_TRUSTED_ORIGINS:-}
     volumes: ["ui-data:/data"]
-    networks: [ingress-lane, google-lane, private-lane]
+    networks: [ingress-lane, google-lane, private-lane, media-lane]
   google-broker:
     <<: *security
     image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
@@ -49,6 +50,17 @@ services:
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
     volumes: ["google-data:/data"]
     networks: [google-lane, google-egress]
+  media-worker:
+    <<: *security
+    image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
+    command: [python, app/services.py]
+    environment:
+      SERVICE_ROLE: media
+      PORT: "8802"
+      MEDIA_WORKER_TOKEN: ${MEDIA_WORKER_TOKEN:?Required}
+      HOME: /tmp
+    # No volumes: anonymous media cannot read the broker's encrypted store/key.
+    networks: [media-lane, media-egress]
   private-worker:
     <<: *security
     image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
@@ -74,6 +86,9 @@ networks:
     internal: true
   google-egress: {}
   model-egress: {}
+  media-lane:
+    internal: true
+  media-egress: {}
 x-runtipi:
   schema_version: 2
   overrides: []

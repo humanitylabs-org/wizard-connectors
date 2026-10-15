@@ -209,8 +209,11 @@ class Broker:
             new = self._copy(); del new['accounts'][account]
             if new['binding'] and new['binding']['account'] == account: new['binding'] = None
             new['revocation'] = 'pending'; self._commit(new)
-            # Also cancel outstanding reconnects, so a late callback cannot resurrect it.
-            self.pending = {k:v for k,v in self.pending.items() if v['account'] != account}
+            # Generic Connect has no known subject until its callback. Cancel every
+            # unidentified flow too: none begun before disconnect may resurrect this
+            # account. finish/start/disconnect share this lock (including token I/O).
+            self.pending = {k:v for k,v in self.pending.items()
+                            if v['account'] is not None and v['account'] != account}
             try:
                 self.provider.request('revoke', form={'token': token})
                 new['revocation'] = 'revoked'

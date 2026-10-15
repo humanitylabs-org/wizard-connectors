@@ -25,6 +25,7 @@ model = RemotePrivateModel() if os.environ.get('PRIVATE_WORKER_TOKEN') else Priv
 jobs = Jobs(model, os.environ.get("DATA_DIR", "/data"))
 sessions = {}
 broker = RPC('google-broker', 8800, os.environ.get('BROKER_TOKEN',''))
+media = RPC('media-worker', 8802, os.environ.get('MEDIA_WORKER_TOKEN',''))
 
 def google_status():
     try: return broker.call('status')
@@ -177,7 +178,8 @@ class Handler(BaseHTTPRequestHandler):
             if path in operations:
                 operation,keys=operations[path]
                 if set(data)!=keys: raise ValueError()
-                return self.send(200,broker.call(operation,**data))
+                target = media if operation == 'audio_probe' else broker
+                return self.send(200,target.call(operation,**data))
             return self.send(400,{"error":"unsupported_operation"})
         except (Blocked,Denied) as exc:
             return self.send(409,{"error":str(exc)})
