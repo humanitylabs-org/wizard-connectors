@@ -1,0 +1,217 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Connected accounts synthetic preview",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/state": {
+      "get": {
+        "summary": "/api/state",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/session": {
+      "post": {
+        "summary": "/api/session",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/conversations/{thread}": {
+      "get": {
+        "summary": "/api/conversations/{thread}",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/summarize": {
+      "post": {
+        "summary": "/api/summarize",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/jobs/{id}": {
+      "get": {
+        "summary": "/api/jobs/{id}",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/results/{id}": {
+      "get": {
+        "summary": "/api/results/{id}",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/cancel/{id}": {
+      "post": {
+        "summary": "/api/cancel/{id}",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/policy": {
+      "post": {
+        "summary": "/api/policy",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/google/connect": {
+      "post": {
+        "summary": "/api/google/connect",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/google/reconnect": {
+      "post": {
+        "summary": "/api/google/reconnect",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/google/disconnect": {
+      "post": {
+        "summary": "/api/google/disconnect",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/music/bind": {
+      "post": {
+        "summary": "/api/music/bind",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    },
+    "/api/music/unlink": {
+      "post": {
+        "summary": "/api/music/unlink",
+        "responses": {
+          "200": {
+            "description": "Owner response or content-free state"
+          },
+          "409": {
+            "description": "Blocked without fallback"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          }
+        }
+      }
+    }
+  }
+}
