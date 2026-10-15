@@ -12,11 +12,11 @@ import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-p=argparse.ArgumentParser();p.add_argument('--env-file',required=True);p.add_argument('--data-dir',required=True);p.add_argument('--core-dir',required=True);p.add_argument('--port',type=int,default=19471);p.add_argument('--backend-port',type=int,default=19470);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--env-file',required=True);p.add_argument('--data-dir',required=True);p.add_argument('--core-dir',required=True);p.add_argument('--port',type=int,default=19471);p.add_argument('--backend-port',type=int,default=19470);p.add_argument('--external-backend',action='store_true');a=p.parse_args()
 env=dict(os.environ)
 env.update(dict(l.split('=',1) for l in Path(a.env_file).read_text().splitlines() if '=' in l))
 env.update(DATA_DIR=a.data_dir,PORT=str(a.backend_port),PYTHONDONTWRITEBYTECODE='1')
-proc=subprocess.Popen([sys.executable,str(Path(__file__).resolve().parents[1]/'app/server.py')],env=env)
+proc=None if a.external_backend else subprocess.Popen([sys.executable,str(Path(__file__).resolve().parents[1]/'app/server.py')],env=env)
 class Proxy(BaseHTTPRequestHandler):
     def log_message(self,*args):pass
     def relay(self):
@@ -45,4 +45,5 @@ class Proxy(BaseHTTPRequestHandler):
     do_GET=relay
     do_POST=relay
 try:ThreadingHTTPServer(('127.0.0.1',a.port),Proxy).serve_forever()
-finally:proc.terminate();proc.wait(timeout=10)
+finally:
+    if proc: proc.terminate();proc.wait(timeout=10)

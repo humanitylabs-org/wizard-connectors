@@ -5,7 +5,7 @@ name: Connected accounts
 type: service
 category: app
 version: 0.1.0
-summary: Google connector readiness and simulated private chat summaries.
+summary: Review-gated Google account broker and simulated private chat summaries.
 license: GPL-3.0-only
 source: https://github.com/humanitylabs-org/wizard-connectors
 runtime:
@@ -35,4 +35,4 @@ needs: []
 health: /healthz
 ---
 # Connected accounts
-Synthetic-only preview. Real Google credentials are not accepted until independent isolation review. No shared platform manifest extension is required.
+Synthetic-only chat; implemented Google OAuth broker remains guarded until independent review and client provisioning. Normal installer forms configure the separate provider and private-worker services. No shared platform manifest extension is required.

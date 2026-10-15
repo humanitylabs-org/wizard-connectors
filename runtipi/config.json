@@ -24,6 +24,21 @@
   "min_tipi_version": "4.8.0",
   "uid": 1000,
   "gid": 1000,
-  "form_fields": [],
+  "form_fields": [
+    {"type":"text","env_variable":"CONNECTORS_IMAGE","label":"Reviewed image ID or immutable digest","required":true,"hint":"Load the reviewed image on this host first; pin its sha256 ID."},
+    {"type":"password","env_variable":"CONNECTORS_OWNER_TOKEN","label":"Human unlock token","required":true,"min":32},
+    {"type":"password","env_variable":"CONNECTORS_MCP_TOKEN","label":"Content-free MCP token","required":true,"min":32},
+    {"type":"password","env_variable":"BROKER_TOKEN","label":"Internal broker token","required":true,"min":32},
+    {"type":"password","env_variable":"PRIVATE_WORKER_TOKEN","label":"Internal private worker token","required":true,"min":32},
+    {"type":"password","env_variable":"TINFOIL_API_KEY","label":"Tinfoil API key (synthetic chat only)","required":false},
+    {"type":"text","env_variable":"PRIVATE_ROUTE_CONFIGURED","label":"Private key configured (true/false)","default":"false","required":false},
+    {"type":"text","env_variable":"WIZARD_TRUSTED_HOSTS","label":"Trusted route hosts (comma separated)","default":"localhost,127.0.0.1","required":false},
+    {"type":"text","env_variable":"WIZARD_TRUSTED_ORIGINS","label":"Trusted HTTPS origins (comma separated)","required":false},
+    {"type":"text","env_variable":"GOOGLE_REVIEW_APPROVED","label":"Exact-source review approved (true/false)","default":"false","required":false},
+    {"type":"text","env_variable":"GOOGLE_CLIENT_ID","label":"Google Web application client ID","required":false},
+    {"type":"password","env_variable":"GOOGLE_CLIENT_SECRET","label":"Google Web application client secret","required":false},
+    {"type":"text","env_variable":"GOOGLE_REDIRECT_URI","label":"Exact registered callback ending /api/google/callback","required":false},
+    {"type":"password","env_variable":"GOOGLE_STORE_KEY","label":"Fernet key (44-char URL-safe base64; provision, retain separately)","required":false}
+  ],
   "no_gui": false
 }

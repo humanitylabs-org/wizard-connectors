@@ -1,25 +1,67 @@
+x-security: &security
+  user: "1000:1000"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  mem_limit: 512m
+  pids_limit: 128
+  tmpfs: ["/tmp:rw,noexec,nosuid,size=128m,uid=1000,gid=1000"]
 services:
   wizard-connectors:
-    image: ${CONNECTORS_IMAGE:?Pin reviewed image}
-    user: "1000:1000"
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
-    mem_limit: 512m
-    tmpfs: [/tmp]
+    <<: *security
+    image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
     environment:
       PORT: "8799"
       DATA_DIR: /data
       CONNECTORS_OWNER_TOKEN: ${CONNECTORS_OWNER_TOKEN:?Required}
       CONNECTORS_MCP_TOKEN: ${CONNECTORS_MCP_TOKEN:?Required}
-      TINFOIL_API_KEY: ${TINFOIL_API_KEY:-}
+      BROKER_TOKEN: ${BROKER_TOKEN:?Required}
+      PRIVATE_WORKER_TOKEN: ${PRIVATE_WORKER_TOKEN:?Required}
+      PRIVATE_ROUTE_CONFIGURED: ${PRIVATE_ROUTE_CONFIGURED:-false}
+      ISOLATED_PACKAGE: "true"
       WIZARD_TRUSTED_HOSTS: ${WIZARD_TRUSTED_HOSTS:-localhost,127.0.0.1}
       WIZARD_TRUSTED_ORIGINS: ${WIZARD_TRUSTED_ORIGINS:-}
-    volumes:
-      - ${APP_DATA_DIR}/data:/data
+    volumes: ["ui-data:/data"]
+    networks: [google-lane, private-lane]
     x-runtipi:
       is_main: true
       internal_port: 8799
+  google-broker:
+    <<: *security
+    image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
+    command: [python, app/services.py]
+    environment:
+      SERVICE_ROLE: google
+      PORT: "8800"
+      BROKER_DATA_DIR: /data
+      BROKER_TOKEN: ${BROKER_TOKEN:?Required}
+      GOOGLE_REVIEW_APPROVED: ${GOOGLE_REVIEW_APPROVED:-false}
+      GOOGLE_STORE_KEY: ${GOOGLE_STORE_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+    volumes: ["google-data:/data"]
+    networks: [google-lane, google-egress]
+  private-worker:
+    <<: *security
+    image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
+    command: [python, app/services.py]
+    environment:
+      SERVICE_ROLE: private
+      PORT: "8801"
+      PRIVATE_WORKER_TOKEN: ${PRIVATE_WORKER_TOKEN:?Required}
+      TINFOIL_API_KEY: ${TINFOIL_API_KEY:-}
+    networks: [private-lane, model-egress]
+volumes:
+  ui-data: {}
+  google-data: {}
+networks:
+  google-lane:
+    internal: true
+  private-lane:
+    internal: true
+  google-egress: {}
+  model-egress: {}
 x-runtipi:
   schema_version: 2
   overrides: []

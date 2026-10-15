@@ -1,6 +1,6 @@
 # Assurance and deployment gate
 
-This is a **simulated private-chat preview**, not private-data eligible. Fictional messages are classified private. No Google credential loading endpoint exists. Account lifecycle code is tested using fixture grants, never falsely presented as connected Google accounts.
+This is a **simulated private-chat preview**, not real-chat eligible. Fictional messages are classified private. Google account authorization is a genuine configurable broker, disabled pending exact-source review and client provisioning. No real Google authorization is claimed. See GOOGLE_RELEASE.md for custody, configuration, install and evidence boundaries.
 
 ## Implemented
 - Deterministic whole-request admission; invalid labels block; private input never chooses the ordinary provider. Private preference fixed to the selected Tinfoil/glm-5-3 route.
@@ -11,10 +11,10 @@ This is a **simulated private-chat preview**, not private-data eligible. Fiction
 - Account/grant/binding separation, consent and operation checks, wrong-account refusal, serialized expiry refresh, local unlink vs disconnect, shared-grant reauthentication invalidation in fixture-tested core.
 
 ## Not proved / deliberately disabled
-Host administrators and unrestricted host agents can read runtime secrets and private memory. Containers are non-root/read-only with no Docker/home mounts, but model-worker egress is not OS constrained. No actual Google OAuth custody, provider revocation, refresh or personal-account authorization is proved. No live chat adapter. No official YouTube audio-delivery entitlement is claimed. Existing Music playback is untouched until its exact source/runtime and uncached path are independently proved. This app is not a replacement for shared Account Manager.
+Host administrators and unrestricted host agents can read runtime secrets and private memory. Containers are non-root/read-only with no Docker/home mounts. UI internet egress is denied by internal Docker networks; broker/private-worker are separate processes/volumes/networks with fixed application-level outbound operations, not destination-firewalled or host-admin-resistant. Actual handlers, encrypted custody, signed ID validation, refresh and revocation are exercised with explicitly fake provider transport; personal Google consent remains unproved. No live chat adapter or official YouTube audio-delivery entitlement is claimed. Existing Music source is untouched. This app is not a replacement for shared Account Manager.
 
 ## Installer contract
-Build only from a pushed revision on the designated worker. Pin the exact image. Inject owner/MCP credentials and Tinfoil key at runtime; never commit credentials or mount a Google cookie jar. Supply approved WizardApp core at `/wizard-os-home/core/app-client.js` and register using actual App Manager lifecycle. Staging does not register production. Parent integration must verify cold in-shell open, route owner authentication and stop/uninstall without data deletion. Google connect intentionally returns `isolation_review_required` until a later independently reviewed adapter implementation.
+Build only from a pushed revision on the designated worker. Pin the exact image. Inject credentials using the normal form into only the service needing them; never commit credentials or mount a Google cookie jar. Supply approved WizardApp core at `/wizard-os-home/core/app-client.js` and register using actual App Manager lifecycle. Staging does not register production. Parent integration must verify cold in-shell open, route owner authentication and stop/uninstall without data deletion. Google connect returns `isolation_review_required` by default, then `google_configuration_required` if reviewed but not provisioned; with both gates satisfied it initiates the implemented browser flow.
 
 ## Source attribution
 `web/boot.js` and `web/wizard-ui.css` copied unchanged from Wizard App Manager hello-wizard (GPL-3.0-only). No shared system implementation is copied. App calls WizardApp for Back and appearance. Claude Opus first-party supplied the bounded UI design before view authoring.
