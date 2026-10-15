@@ -28,7 +28,7 @@ class FakeGoogle(GoogleTransport):
         self.key=rsa.generate_private_key(public_exponent=65537,key_size=2048)
         self.jwk=json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(self.key.public_key()));self.jwk['kid']='fixture'
         self.nonce='';self.subject='fixture-subject-a';self.scopes=IDENTITY
-        self.refreshes=0;self.revoked=False;self.fail_revoke=False;self.bad={};self.forms=[]
+        self.refreshes=0;self.revoked=False;self.fail_revoke=False;self.bad={};self.forms=[];self.forge=False
     def request(self,operation,*,form=None,token=None,query=None):
         if operation=='jwks':return {'keys':[self.jwk]}
         if operation=='userinfo':return {'sub':self.subject}
@@ -43,7 +43,7 @@ class FakeGoogle(GoogleTransport):
                     'iat':int(time.time()),'exp':int(time.time())+3600,'email':'fixture@example.invalid','email_verified':True,**self.bad}
             if form['grant_type']=='refresh_token': self.refreshes+=1;time.sleep(.02)
             return {'access_token':'FAKE_ACCESS_SECRET','refresh_token':'FAKE_REFRESH_SECRET','token_type':'Bearer','expires_in':3600,
-                    'scope':' '.join(self.scopes),'id_token':jwt.encode(claims,self.key,algorithm='RS256',headers={'kid':'fixture'})}
+                    'scope':' '.join(self.scopes),'id_token':jwt.encode(claims,rsa.generate_private_key(public_exponent=65537,key_size=2048) if self.forge else self.key,algorithm='RS256',headers={'kid':'fixture'})}
         raise AssertionError(operation)
 
 class BrokerHTTPTests(unittest.TestCase):
@@ -58,7 +58,7 @@ class BrokerHTTPTests(unittest.TestCase):
         self.s=service('google',self.b);threading.Thread(target=self.s.serve_forever,daemon=True).start()
         import server
         self.ui=server
-        self.ui.OWNER='o'*40;self.ui.MCP='m'*40
+        self.ui.OWNER='o'*40;self.ui.MCP='m'*40;self.ui.MUSIC='s'*40
         self.ui.broker=RPC('127.0.0.1',self.s.server_port,'b'*40)
         self.web=ThreadingHTTPServer(('127.0.0.1',0),self.ui.Handler);threading.Thread(target=self.web.serve_forever,daemon=True).start()
         self.base='http://127.0.0.1:'+str(self.web.server_port);self.cookie=''
@@ -115,6 +115,14 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(self.b.status()['accounts'][0]['id'],aid)
         self.fake.subject='fixture-subject-a';p=self.start(True,aid);self.fake.scopes=IDENTITY;self.assertEqual(self.finish(p)[0],400)
         p=self.start(True,aid);self.fake.scopes=SCOPES|{'https://mail.google.com/'};self.assertEqual(self.finish(p)[0],400)
+    def test_forged_signature_and_atomic_storage_failure(self):
+        self.fake.forge=True;p=self.start();self.assertEqual(self.finish(p)[0],400)
+        self.assertFalse(self.b.status()['accounts']);self.fake.forge=False
+        p=self.start()
+        with patch.object(self.b.store,'save',side_effect=OSError('fixture disk failure')):
+            self.assertEqual(self.finish(p)[0],400)
+        self.assertFalse(self.b.status()['accounts'])
+        self.assertFalse(Broker(self.config,self.fake).status()['accounts'])
     def test_refresh_serialized_wrong_subject_revocation_and_gate(self):
         aid=self.connect();self.b.bind(aid,True);self.b.state['accounts'][aid]['expires']=0
         with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
@@ -138,6 +146,16 @@ class BrokerHTTPTests(unittest.TestCase):
         self.connect()
         with self.assertRaises(RuntimeError):Broker({**self.config,'GOOGLE_STORE_KEY':''},self.fake)
         with self.assertRaises(RuntimeError):Broker({**self.config,'GOOGLE_STORE_KEY':Fernet.generate_key().decode()},self.fake)
+    def test_typed_music_service_uses_only_persisted_owner_binding(self):
+        headers={'Authorization':'Bearer '+'s'*40};payload={'video_id':'W8VdVY8diqs'}
+        self.assertEqual(self.req('/service/music/catalog',payload,owner=False,headers=headers)[1]['error'],'capability_denied')
+        aid=self.connect();self.b.bind(aid,True)
+        self.assertEqual(self.req('/service/music/catalog',payload,owner=False,headers=headers)[0],200)
+        self.assertEqual(self.req('/service/music/catalog',{**payload,'account':'wrong'},owner=False,headers=headers)[0],400)
+        self.assertEqual(self.req('/service/music/catalog',payload,owner=False,headers={'Authorization':'Bearer '+'m'*40})[0],401)
+        self.assertEqual(self.req('/api/state',owner=False,headers=headers)[0],401)
+        self.assertEqual(self.req('/api/google/connect',{},owner=False,headers=headers)[0],401)
+        self.b.unlink();self.assertEqual(self.req('/service/music/catalog',payload,owner=False,headers=headers)[1]['error'],'capability_denied')
     def test_disconnect_cancels_pending_reconnect(self):
         aid=self.connect();p=self.start(True,aid);self.req('/api/google/disconnect',{'account':aid})
         self.assertEqual(self.finish(p)[0],400);self.assertEqual(self.b.status()['accounts'],[])

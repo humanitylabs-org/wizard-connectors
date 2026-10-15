@@ -246,3 +246,10 @@ class Broker:
             items = [{'id':i['id'], 'title':str(i.get('snippet',{}).get('title',''))[:300]} for i in raw.get('items',[]) if i.get('id') == video_id]
             return {'provider':'youtube-music', 'catalog_source':'youtube-data-api', 'items':items,
                     'audio_verified':False, 'playback_entitlement':False}
+
+    def music_catalog(self, video_id):
+        # Service caller cannot select an account/grant or widen the owner binding.
+        with self.lock:
+            binding=self.state['binding']
+            if not binding: raise Denied('capability_denied')
+            return self.catalog(binding['account'],video_id)

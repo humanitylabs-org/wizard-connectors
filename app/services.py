@@ -39,7 +39,7 @@ def service(role, broker=None):
             try: return music.probe(video_id)
             finally: mutex.release()
         operations={'status':b.status,'start':b.start,'finish':b.finish,'bind':b.bind,'unlink':b.unlink,
-                    'disconnect':b.disconnect,'catalog':b.catalog,'audio_probe':probe}
+                    'disconnect':b.disconnect,'catalog':b.catalog,'music_catalog':b.music_catalog,'audio_probe':probe}
         port,token=8800,os.environ.get('BROKER_TOKEN','')
     elif role=='private':
         model=PrivateModel(os.environ.get('TINFOIL_API_KEY','')); mutex=threading.Lock()

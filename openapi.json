@@ -9,6 +9,7 @@
     "/api/music/catalog": {"post":{"summary":"Owner-only fixed YouTube Data API video lookup; not audio","responses":{"200":{"description":"Catalog items, audio_verified=false"},"409":{"description":"Capability or provider denied"}}}},
     "/api/music/audio-probe": {"post":{"summary":"Owner-only anonymous fresh audio probe; no Google cookie import","responses":{"200":{"description":"Verified fresh audio bytes OR structured blocked source result"},"409":{"description":"Invalid ID or busy worker"}}}},
     "/api/session/logout": {"post":{"summary":"Invalidate this owner browser session","responses":{"200":{"description":"Session removed"},"401":{"description":"Owner required"}}}},
+    "/service/music/catalog": {"post":{"summary":"Typed Music caller token; bound account selected only by broker","responses":{"200":{"description":"Catalog metadata only"},"401":{"description":"Music caller required; owner/MCP credentials do not substitute"},"409":{"description":"No owner binding or provider permission"}}}},
     "/api/state": {
       "get": {
         "summary": "/api/state",

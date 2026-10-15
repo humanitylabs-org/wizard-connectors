@@ -18,6 +18,7 @@ from google_broker import Denied
 ROOT = Path(__file__).resolve().parent.parent
 OWNER = os.environ.get("CONNECTORS_OWNER_TOKEN", "")
 MCP = os.environ.get("CONNECTORS_MCP_TOKEN", "")
+MUSIC = os.environ.get('MUSIC_ADAPTER_TOKEN','')
 HOSTS = {s.split(":")[0] for s in os.environ.get("WIZARD_TRUSTED_HOSTS", "localhost,127.0.0.1").split(",") if s}
 ORIGINS = {s.rstrip("/") for s in os.environ.get("WIZARD_TRUSTED_ORIGINS", "").split(",") if s}
 model = RemotePrivateModel() if os.environ.get('PRIVATE_WORKER_TOKEN') else PrivateModel(os.environ.get("TINFOIL_API_KEY", ""))
@@ -145,6 +146,12 @@ class Handler(BaseHTTPRequestHandler):
             if not MCP or not hmac.compare_digest(token, MCP):
                 return self.send(401,{"error":"mcp_auth_required"})
             return self.mcp(data)
+        if path == '/service/music/catalog':
+            token=self.headers.get('Authorization','').removeprefix('Bearer ')
+            if not MUSIC or not hmac.compare_digest(token,MUSIC): return self.send(401,{'error':'music_service_auth_required'})
+            if set(data)!={'video_id'}: return self.send(400,{'error':'invalid_operation'})
+            try: return self.send(200,broker.call('music_catalog',video_id=data['video_id']))
+            except Denied as e: return self.send(409,{'error':str(e)})
         if not self.human(): return self.send(401,{"error":"owner_auth_required"})
         try:
             if path == '/api/session/logout' and not data:

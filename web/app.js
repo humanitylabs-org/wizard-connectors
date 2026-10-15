@@ -13,7 +13,7 @@ $('dialog-close').onclick=closeDialog;$('dialog').addEventListener('cancel',e=>{
 async function stop(){generation++;clearTimeout(poll);if(activeJob){const id=activeJob;activeJob=null;try{await api('cancel/'+id,{});}catch{}}}
 function navigate(next){view=next;document.body.dataset.view=view;render();}
 function back(){if(view==='summary'){navigate('chat');return true;}if(view!=='root'){stop();navigate('root');return true;}return false;}
-async function refresh(){state=await api('state');$('unlock').hidden=true;$('workspace').hidden=false;render();}
+async function refresh(){state=await api('state');$('unlock').hidden=true;$('workspace').hidden=false;document.querySelector('#google-row small').textContent=state.google.blocker?'Google · '+state.google.blocker.replaceAll('_',' '):state.google.state==='connected'?'Connected · permissions managed here':'Not connected';render();}
 function render(){detail.replaceChildren();document.body.dataset.view=view;if(!state)return;if(view==='root'){append('h2','Choose a connection');append('p','Google accounts and service permissions stay separate. Practice private summaries with fictional messages while real-account activation awaits review.');return;}
 button('← Back',back);if(view==='google')return renderGoogle();if(view==='summary')return renderSummary();renderChat();}
 async function accountAction(path,data){try{await api(path,data);await refresh();}catch(e){dialog('Account action unavailable',errorText(e.message));}}
