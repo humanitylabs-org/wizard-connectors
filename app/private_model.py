@@ -22,6 +22,7 @@ class PrivateModel:
     def summarize(self, packet):
         if not self.key:
             raise Blocked("private_route_not_configured")
+        client = None
         try:
             from tinfoil import TinfoilAI
             client = TinfoilAI(api_key=self.key, user_cache_secret=secrets.token_urlsafe(32), timeout=90)
@@ -49,3 +50,9 @@ class PrivateModel:
         except Exception:
             # Provider exceptions may contain input or authenticated URLs.
             raise Blocked("private_provider_unavailable") from None
+        finally:
+            if client is not None:
+                try:
+                    client.client.close()
+                except Exception:
+                    pass

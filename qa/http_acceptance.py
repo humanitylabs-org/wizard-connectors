@@ -40,6 +40,8 @@ _,result=request('/api/results/'+job['id'])
 receipt={'checks':checks,'job':status,'elapsed':round(time.monotonic()-start,2),'route':'tinfoil/glm-5-3','synthetic_only':True,'result_characters':len(result.get('text','')),'real_summary_complete':status['status']=='complete','result_source_ids':result.get('source_ids',[])}
 Path(a.output).write_text(json.dumps(receipt,indent=2))
 check('real attested summary completed',status['status']=='complete')
+check('attestation proof returned to owner only',result.get('attestation',{}).get('security_verified') is True)
+receipt['attestation']=result['attestation']
 check('single conversation scope', 'SECOND-THREAD-CANARY' not in result['text'])
 check('content-free job API', 'text' not in status and 'source_ids' not in status)
 check('MCP token cannot read result', request('/api/results/'+job['id'],who='mcp')[0]==401)

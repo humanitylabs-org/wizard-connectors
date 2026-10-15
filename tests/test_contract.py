@@ -122,6 +122,16 @@ class JobTests(unittest.TestCase):
         self.m.key=""
         with self.assertRaises(Blocked):self.j.create("garden","request-123")
         self.assertEqual(self.m.calls,0)
+    def test_cancel_does_not_admit_parallel_worker(self):
+        ident=self.create();self.j.cancel(ident)
+        with self.assertRaisesRegex(Blocked,"worker_busy"):
+            self.j.create("bookclub","request-next")
+        self.assertEqual(self.m.calls,1)
+    def test_failed_policy_storage_preserves_epoch(self):
+        epoch=self.j.epoch
+        with patch.object(Path,"write_text",side_effect=OSError("full")):
+            with self.assertRaises(OSError):self.j.policy(False)
+        self.assertTrue(self.j.enabled);self.assertEqual(self.j.epoch,epoch)
     def test_no_policy_relabel(self):
         with self.assertRaises(ValueError):self.j.policy("false")
     def test_snapshot_dedup(self):

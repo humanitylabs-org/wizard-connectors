@@ -19,6 +19,7 @@ class Jobs:
         self.epoch = saved.get("epoch", 0)
         self.jobs = {}
         self.keys = {}
+        self.worker_active = False
 
     def policy(self, enabled):
         if type(enabled) is not bool:
@@ -45,7 +46,7 @@ class Jobs:
                 if old["thread"] != thread:
                     raise ValueError("idempotency_conflict")
                 return self.public(old)
-            if any(j["status"] in ("queued", "running") for j in self.jobs.values()):
+            if self.worker_active:
                 raise Blocked("worker_busy")
             decision = admit(labels=["private"], private_enabled=self.enabled)
             if decision.route == "block":
@@ -57,6 +58,7 @@ class Jobs:
                    "epoch": self.epoch, "expires": time.time()+900, "result": None}
             self.jobs[ident] = job
             self.keys[key] = ident
+            self.worker_active = True
             threading.Thread(target=self.run, args=(ident,), daemon=True).start()
             return self.public(job)
 
@@ -64,6 +66,7 @@ class Jobs:
         with self.lock:
             j = self.jobs[ident]
             if j["epoch"] != self.epoch or j["status"] != "queued":
+                self.worker_active = False
                 return
             j["status"] = "running"
             packet = snapshot(j["thread"])
@@ -75,11 +78,14 @@ class Jobs:
                 if j["epoch"] != self.epoch or j["status"] != "running" or j["expires"] <= time.time():
                     j.update(status="quarantined", result=None, reason="stale_delivery")
                 else:
-                    j.update(status="complete", result=text)
+                    j.update(status="complete", result=text, attestation=getattr(self.model, "last_attestation", None))
         except Exception as exc:
             with self.lock:
                 if j["status"] == "running":
                     j.update(status="blocked", reason=str(exc) if isinstance(exc, Blocked) else "private_provider_unavailable", result=None)
+        finally:
+            with self.lock:
+                self.worker_active = False
 
     def purge(self):
         for j in self.jobs.values():
@@ -103,7 +109,7 @@ class Jobs:
             if human and j["status"] == "complete" and j["epoch"] == self.epoch:
                 out.update(text=j["result"], classification="private", trust="untrusted",
                            source_ids=[m["id"] for m in snapshot(j["thread"])["messages"]],
-                           route="tinfoil/glm-5-3", simulated=True)
+                           route="tinfoil/glm-5-3", simulated=True, attestation=j.get("attestation"))
             return out
 
     def cancel(self, ident):

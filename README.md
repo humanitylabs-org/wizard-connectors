@@ -14,6 +14,6 @@ Google account readiness and a real no-tool Tinfoil `glm-5-3` summary of fiction
 
 Build `docker build -f app/Dockerfile -t wizard-connectors:<pushed-sha> .` on the designated worker. Inject distinct `CONNECTORS_OWNER_TOKEN`, `CONNECTORS_MCP_TOKEN`, `TINFOIL_API_KEY`, and explicit trusted hosts/origins at runtime. Bind port 8799 to loopback, mount private `/data`, drop all capabilities, read-only root, no Docker socket or owner home mounts. Never bake secrets into images.
 
-`python3 -m unittest discover -s tests -v` exercises policy/lifecycle without network. `python3 scripts/package.py` regenerates portable compose from source; pin `CONNECTORS_IMAGE` to the worker-built image in the local lifecycle installer. App Manager's approved checker plus shared-function gate remain authoritative. Production installation goes through App Manager, not manual registry edits.
+`python3 -m unittest discover -s tests -v` exercises policy/lifecycle without network. The checked-in compose is the portable manifest; pin `CONNECTORS_IMAGE` to the worker-built image in the local lifecycle installer. App Manager's approved checker plus shared-function gate remain authoritative. Production installation goes through App Manager, not manual registry edits.
 
 Shared UI kit/boot origins: Wizard App Manager `hello-wizard`, GPL-3.0-only. UI design: first-party Claude Opus consultation, implemented here; no private owner data in source.
