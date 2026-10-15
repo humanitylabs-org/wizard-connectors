@@ -12,7 +12,7 @@ Google account readiness and a real no-tool Tinfoil `glm-5-3` summary of fiction
 
 ## Run and package
 
-Build `docker build --build-arg SOURCE_REVISION=<pushed-sha> -f app/Dockerfile -t wizard-connectors:<pushed-sha> .` on the designated worker. Deploy the checked-in three-service compose, not just the UI container: UI is on internal networks, Google broker and private worker use distinct outbound lanes and credentials. The normal install form supplies all runtime configuration. Bind the UI through the authenticated Wizard route. Never bake secrets into images.
+Build `docker build --build-arg SOURCE_REVISION=<pushed-sha> -f app/Dockerfile -t wizard-connectors:<pushed-sha> .` on the designated worker. Deploy the checked-in four-service compose, not just the UI container: UI is on internal networks, Google broker and private worker use distinct outbound lanes and credentials. The normal install form supplies all runtime configuration. Bind the UI through the authenticated Wizard route. Never bake secrets into images.
 
 `python3 -m unittest discover -s tests -v` exercises policy/lifecycle without network. The checked-in compose is the portable manifest; pin `CONNECTORS_IMAGE` to the worker-built image in the local lifecycle installer. App Manager's approved checker plus shared-function gate remain authoritative. Production installation goes through App Manager, not manual registry edits.
 

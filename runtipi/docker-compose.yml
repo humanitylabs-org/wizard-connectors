@@ -7,6 +7,14 @@ x-security: &security
   pids_limit: 128
   tmpfs: ["/tmp:rw,noexec,nosuid,size=128m,uid=1000,gid=1000"]
 services:
+  ingress:
+    <<: *security
+    image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
+    command: [python, app/ingress.py]
+    networks: [ingress-lane, edge]
+    x-runtipi:
+      is_main: true
+      internal_port: 8799
   wizard-connectors:
     <<: *security
     image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
@@ -22,10 +30,7 @@ services:
       WIZARD_TRUSTED_HOSTS: ${WIZARD_TRUSTED_HOSTS:-localhost,127.0.0.1}
       WIZARD_TRUSTED_ORIGINS: ${WIZARD_TRUSTED_ORIGINS:-}
     volumes: ["ui-data:/data"]
-    networks: [google-lane, private-lane]
-    x-runtipi:
-      is_main: true
-      internal_port: 8799
+    networks: [ingress-lane, google-lane, private-lane]
   google-broker:
     <<: *security
     image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
@@ -51,6 +56,8 @@ services:
       PORT: "8801"
       PRIVATE_WORKER_TOKEN: ${PRIVATE_WORKER_TOKEN:?Required}
       TINFOIL_API_KEY: ${TINFOIL_API_KEY:-}
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/cache
     networks: [private-lane, model-egress]
 volumes:
   ui-data: {}
@@ -58,6 +65,9 @@ volumes:
 networks:
   google-lane:
     internal: true
+  ingress-lane:
+    internal: true
+  edge: {}
   private-lane:
     internal: true
   google-egress: {}

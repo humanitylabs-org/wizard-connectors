@@ -5,6 +5,10 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/google/callback": {"get":{"summary":"Browser-bound one-use OAuth callback; no owner session created","responses":{"200":{"description":"Connected; return to account UI"},"400":{"description":"Authorization rejected without secret details"}}}},
+    "/api/music/catalog": {"post":{"summary":"Owner-only fixed YouTube Data API video lookup; not audio","responses":{"200":{"description":"Catalog items, audio_verified=false"},"409":{"description":"Capability or provider denied"}}}},
+    "/api/music/audio-probe": {"post":{"summary":"Owner-only anonymous fresh audio probe; no Google cookie import","responses":{"200":{"description":"Verified fresh audio bytes OR structured blocked source result"},"409":{"description":"Invalid ID or busy worker"}}}},
+    "/api/session/logout": {"post":{"summary":"Invalidate this owner browser session","responses":{"200":{"description":"Session removed"},"401":{"description":"Owner required"}}}},
     "/api/state": {
       "get": {
         "summary": "/api/state",

@@ -21,7 +21,7 @@ try{
  check('binding survives page reload',true);check('phone no overflow',await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  await page.screenshot({path:path.join(out,'phone-bound-fake-provider.png'),fullPage:true});
  await page.getByLabel('YouTube video ID').fill('W8VdVY8diqs');await page.getByRole('button',{name:'Look up catalog item',exact:true}).click();await page.locator('dialog[open]').waitFor();check('fake catalog explicitly not audio', (await page.locator('dialog').innerText()).includes('FAKE catalog fixture'));
- await page.goBack();check('Back closes overlay, app stays open',!(await page.locator('dialog').getAttribute('open'))&&page.url().startsWith(base));
+ await page.goBack();check('Back closes overlay, app stays open',await page.locator('dialog[open]').count()===0&&page.url().startsWith(base));
  await page.getByRole('button',{name:'Unlink Music catalog',exact:true}).click();await page.getByText('Catalog account unbound',{exact:true}).waitFor();check('unlink preserves account',await page.getByText('fixture@example.invalid',{exact:true}).count()===1);
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Disconnect Google account',exact:true}).click();await page.getByText('No Google account connected.',{exact:false}).waitFor();
  check('disconnect durable readback',(await (await context.request.get(base+'/api/state')).json()).google.accounts.length===0);
