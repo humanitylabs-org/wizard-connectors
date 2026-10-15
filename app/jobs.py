@@ -24,15 +24,16 @@ class Jobs:
         if type(enabled) is not bool:
             raise ValueError("invalid_policy")
         with self.lock:
+            next_epoch = self.epoch + 1
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"private_enabled": enabled, "epoch": next_epoch}))
+            tmp.chmod(0o600)
+            os.replace(tmp, self.path)
             self.enabled = enabled
-            self.epoch += 1
+            self.epoch = next_epoch
             for j in self.jobs.values():
                 j.update(status="quarantined", reason="policy_changed", result=None)
             self.keys.clear()
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"private_enabled": enabled, "epoch": self.epoch}))
-            tmp.chmod(0o600)
-            os.replace(tmp, self.path)
 
     def create(self, thread, key):
         if thread not in ("garden", "bookclub") or not isinstance(key, str) or not 8 <= len(key) <= 96:

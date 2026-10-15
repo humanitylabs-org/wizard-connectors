@@ -18,7 +18,7 @@ from private_model import PrivateModel, Blocked
 ROOT = Path(__file__).resolve().parent.parent
 OWNER = os.environ.get("CONNECTORS_OWNER_TOKEN", "")
 MCP = os.environ.get("CONNECTORS_MCP_TOKEN", "")
-HOSTS = {s for s in os.environ.get("WIZARD_TRUSTED_HOSTS", "localhost,127.0.0.1").split(",") if s}
+HOSTS = {s.split(":")[0] for s in os.environ.get("WIZARD_TRUSTED_HOSTS", "localhost,127.0.0.1").split(",") if s}
 ORIGINS = {s.rstrip("/") for s in os.environ.get("WIZARD_TRUSTED_ORIGINS", "").split(",") if s}
 model = PrivateModel(os.environ.get("TINFOIL_API_KEY", ""))
 jobs = Jobs(model, os.environ.get("DATA_DIR", "/data"))
@@ -141,6 +141,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400,{"error":"unsupported_operation"})
         except Blocked as exc:
             return self.send(409,{"error":str(exc)})
+        except OSError:
+            return self.send(503,{"error":"local_storage_unavailable"})
         except (ValueError,KeyError,TypeError):
             return self.send(400,{"error":"invalid_request"})
 

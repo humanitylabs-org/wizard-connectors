@@ -24,7 +24,8 @@ class PrivateModel:
             raise Blocked("private_route_not_configured")
         try:
             from tinfoil import TinfoilAI
-            client = TinfoilAI(api_key=self.key, user_cache_secret=secrets.token_urlsafe(32), timeout=90, max_retries=0)
+            client = TinfoilAI(api_key=self.key, user_cache_secret=secrets.token_urlsafe(32), timeout=90)
+            client.client.max_retries = 0
             self.verify(client)
             self.calls += 1
             response = client.chat.completions.create(

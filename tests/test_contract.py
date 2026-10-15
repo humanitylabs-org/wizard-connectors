@@ -133,7 +133,7 @@ class JobTests(unittest.TestCase):
 class ClientTests(unittest.TestCase):
     def test_attestation_fail_and_no_dispatch(self):
         class Client:
-            def __init__(self,**kwargs):pass
+            def __init__(self,**kwargs):self.client=SimpleNamespace()
             def get_verification_document(self):return SimpleNamespace(enclave_fingerprint="x",security_verified=False)
         with patch.dict(sys.modules,{"tinfoil":SimpleNamespace(TinfoilAI=Client)}):
             m=PrivateModel("fixture-key")
@@ -143,6 +143,7 @@ class ClientTests(unittest.TestCase):
         calls=[]
         class Client:
             def __init__(self,**kwargs):
+                self.client=SimpleNamespace()
                 self.chat=SimpleNamespace(completions=SimpleNamespace(create=self.create))
             def get_verification_document(self):return SimpleNamespace(enclave_fingerprint="fixture",security_verified=True)
             def create(self,**kwargs):
