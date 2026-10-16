@@ -1,1 +1,30 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connected accounts</title><script src="boot.js"></script><link rel="stylesheet" href="wizard-ui.css"><link rel="stylesheet" href="styles.css"><script defer src="/wizard-os-home/core/app-client.js"></script><script defer src="app.js"></script></head><body><main class="wz-app"><header class="wz-head">Connected accounts</header><div class="notice"><strong>Private chat is simulated only.</strong> Google sign-in needs independent review and a registered client. The host administrator remains trusted; connecting an account does not authorize Music playback.</div><p id="system-error" role="alert" hidden></p><form id="unlock" hidden><label>Owner access token <input id="owner-token" type="password" autocomplete="off" required></label><button>Unlock preview</button><small>Provided by the local installer. Never paste Google credentials here.</small></form><div id="workspace"><nav id="navigation" aria-label="Connections"><p class="wz-sec-h">Google</p><button id="google-row" class="row"><strong>Google account</strong><small>Not connected · review required</small></button><p class="wz-sec-h">Practice data</p><button id="chat-row" class="row"><strong>Simulated chat</strong><small>Fictional · contains private data</small></button></nav><section id="detail" aria-live="polite"></section></div></main><dialog id="dialog"><h2 id="dialog-title"></h2><p id="dialog-text"></p><button id="dialog-close">OK</button></dialog></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <title>Connected accounts</title>
+  <script src="boot.js"></script>
+  <link rel="stylesheet" href="wizard-ui.css">
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="/wizard-os-home/core/app-client.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body data-view="loading">
+  <div class="wz-app">
+    <!-- Shown only standalone; in a shell window the title bar already names the app. -->
+    <header class="wz-head"><h1>Connected accounts</h1></header>
+    <main id="view" class="wz-scroll">
+      <div class="ca-state" role="status"><strong>Loading…</strong></div>
+    </main>
+    <p id="status" class="wz-status note" role="status" aria-live="polite"></p>
+    <footer id="dock" class="ca-dock" hidden></footer>
+  </div>
+  <dialog id="dialog" class="ca-sheet" aria-labelledby="dialog-title" aria-describedby="dialog-text">
+    <h2 id="dialog-title"></h2>
+    <p id="dialog-text"></p>
+    <div id="dialog-actions" class="ca-sheet-actions"></div>
+  </dialog>
+</body>
+</html>
