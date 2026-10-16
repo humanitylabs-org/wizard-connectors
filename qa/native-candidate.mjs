@@ -7,6 +7,7 @@ const report={checks:[],screenshots:[],errors:[]};const check=(n,b)=>{assert(b,n
 async function shot(page,name){await page.screenshot({path:path.join(out,name+'.png')});report.screenshots.push(name+'.png');}
 async function candidate(opts={}){
  const context=await browser.newContext(opts);const page=await context.newPage();page.on('pageerror',e=>report.errors.push(e.message));
+ page.on('response',async r=>{if(new URL(r.url()).pathname.includes('/wizard-connectors/api/results/')&&r.ok()){const d=await r.json();report.realResultMetadata={route:d.route,simulated:d.simulated,classification:d.classification,trust:d.trust,security_verified:d.attestation?.security_verified,source_ids:d.source_ids};}});
  await context.route('**/wizard-connectors/**',async r=>{const p=new URL(r.request().url()).pathname;if(p.includes('/api/'))return r.continue();
  const name=p.endsWith('/')?'index.html':p.split('/').pop();const file=path.join(root,'web',name);if(!['index.html','app.js','styles.css','wizard-ui.css','boot.js'].includes(name))return r.continue();
  await r.fulfill({status:200,contentType:name.endsWith('.html')?'text/html':name.endsWith('.css')?'text/css':'text/javascript',body:fs.readFileSync(file),headers:{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'self'",'Cache-Control':'no-store'}});});

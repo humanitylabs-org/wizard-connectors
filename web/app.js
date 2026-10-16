@@ -480,7 +480,7 @@ function prose(text, ids) {
   const out = [], plain = s => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/__(.+?)__/g, '$1').replace(/`([^`]+)`/g, '$1');
   const chips = s => s.split(/\b([a-z]\d{1,3})\b/).map((p, i) => i % 2 && ids.has(p)
     ? h('span', { class: 'ca-ref', 'aria-label': 'Message ' + p, text: p }) : p);
-  const inline = s => plain(s).split(/([\[(][a-z]\d{1,3}(?:\s*,\s*[a-z]\d{1,3})*[\])])/).flatMap((p, i) =>
+  const inline = s => plain(s).split(/(\([^()\n]{1,16}\)|\[[^\]\n]{1,16}\])/).flatMap((p, i) =>
     i % 2 ? [h('span', { class: 'ca-citation' }, chips(p))] : chips(p));
   let para = [], items = null;
   const flush = () => {
