@@ -1,0 +1,4 @@
+.design-reference/
+evidence/
+__pycache__/
+*.pyc

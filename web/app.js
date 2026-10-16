@@ -20,6 +20,16 @@ let job = null;              // { id, thread } while a summary runs
 let starting = false;        // summarize request in flight (prevents double submit)
 let poll = null;
 let result = null;           // { thread, text, source_ids, ... } human-view result
+let expiryTimer = null;
+function clearResult() { clearTimeout(expiryTimer); expiryTimer = null; result = null; }
+function expireResult() {
+  if (!result || Date.now() < result.expiresAt) return;
+  const thread = result.thread;
+  clearResult(); outcome = { thread, text: MESSAGES.retention_expired };
+  if (route.name === 'summary') go({ name: 'thread', id: thread });
+}
+addEventListener('focus', expireResult);
+document.addEventListener('visibilitychange', expireResult);
 let outcome = null;          // { thread, text } last non-success summary outcome
 let authLink = null;         // { account, href } Google consent page, opened by the user's own tap
 let lookup = null;           // { text } last Music catalog lookup
@@ -191,6 +201,10 @@ function closeDialog(restore = true) {
   returnFocus = null;
 }
 dialogEl.addEventListener('cancel', e => { e.preventDefault(); closeDialog(); });
+// Handle Escape inside the modal before the host's desktop Escape shortcut can consume it.
+addEventListener('keydown', e => {
+  if (dialogEl.open && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeDialog(); }
+}, true);
 const fail = (title, e) => { if (!e?.handled) openDialog(title, errorText(codeOf(e))); };
 
 /* ---------- render ---------- */
@@ -218,7 +232,7 @@ function preparation(g) {
   if (g.blocker === 'isolation_review_required')
     return { title: 'Google sign-in is waiting for review', text: 'An independent privacy review has to finish before Google accounts can be connected. Nothing is needed from you.' };
   if (PREPARING.includes(g.blocker))
-    return { title: 'Google sign-in is being prepared', text: 'This Wizard’s Google sign-in hasn’t been set up yet. Connect will appear here once it’s ready. Nothing is needed from you.' };
+    return { title: 'Google sign-in isn’t set up yet', text: 'Connect will appear here once this Wizard’s Google sign-in is ready. Nothing is needed from you.' };
   if (g.blocker) return { title: 'Google sign-in is paused', text: 'Connect will return here when setup is complete.' };
   return null;
 }
@@ -226,7 +240,7 @@ function googleSummary(g) {
   const n = g.accounts.length;
   if (g.state === 'unavailable' || g.blocker === 'broker_unavailable') return 'Not responding right now';
   if (n) return n + (n === 1 ? ' account' : ' accounts') + ' connected' + (g.blocker ? ' · sign-in paused' : '');
-  if (g.blocker) return 'Being prepared · not available yet';
+  if (g.blocker) return 'Not set up yet';
   return 'Not connected';
 }
 const google = () => ({ accounts: [], bindings: [], music: { state: 'unbound' }, ...state.google });
@@ -259,7 +273,7 @@ function renderGoogle() {
   viewEl.append(viewHeader('Google'));
   if (prep && !g.accounts.length) {
     viewEl.append(emptyState('clock', prep.title, prep.text,
-      actions(btn('Check again', checkAgain, { key: 'google-refresh', disabled: busy.has('refresh') }),
+      actions(btn('Refresh status', checkAgain, { key: 'google-refresh', disabled: busy.has('refresh') }),
         btn('Setup details', () => go({ name: 'about', from: 'google' }), { kind: 'ghost', key: 'open:about:' }))));
   } else if (prep) {
     viewEl.append(h('div', { class: 'ca-notice' }, h('strong', { text: prep.title }), h('p', { text: 'Connected accounts stay as they are. Adding or reconnecting accounts returns when sign-in is ready.' })));
@@ -278,7 +292,7 @@ function renderGoogle() {
       h('p', { text: 'Access was removed here. To finish, remove “Connected accounts” from the third-party access list in your Google Account.' })));
   }
   viewEl.append(musicSection(g, null));
-  if (!prep || g.accounts.length) viewEl.append(actions(btn('Check again', checkAgain, { kind: 'ghost', key: 'google-refresh', disabled: busy.has('refresh') })));
+  if (!prep || g.accounts.length) viewEl.append(actions(btn('Refresh status', checkAgain, { kind: 'ghost', key: 'google-refresh', disabled: busy.has('refresh') })));
 }
 function musicSection(g, onlyAccount) {
   const binding = g.bindings[0], bound = g.music.state === 'bound' && binding;
@@ -384,12 +398,13 @@ function stop() {
 }
 async function summarize(thread) {
   if (job || starting) return;
-  const gen = ++generation;
+  const gen = ++generation, expiresAt = Date.now() + 900000;
+  clearResult();
   starting = true; outcome = null; render();
   try {
     const j = await api('summarize', { thread, request_id: requestId() });
     if (gen !== generation) { api('cancel/' + j.id, {}).catch(() => {}); return; }
-    starting = false; job = { id: j.id, thread }; render();
+    starting = false; job = { id: j.id, thread, expiresAt }; render();
     poll = setTimeout(() => check(gen), 500);
   } catch (e) {
     if (gen !== generation) return;
@@ -398,7 +413,7 @@ async function summarize(thread) {
 }
 async function check(gen) {
   if (gen !== generation || !job) return;
-  const { id, thread } = job;
+  const { id, thread, expiresAt } = job;
   try {
     const s = await api('jobs/' + id);
     if (gen !== generation) return;
@@ -407,7 +422,9 @@ async function check(gen) {
       if (gen !== generation) return;
       job = null; poll = null;
       if (typeof r.text !== 'string' || !r.text.trim()) return finish(thread, errorText(r.reason || 'retention_expired'));
-      result = { ...r, thread };
+      if (Date.now() >= expiresAt) return finish(thread, MESSAGES.retention_expired);
+      result = { ...r, thread, expiresAt };
+      expiryTimer = setTimeout(expireResult, Math.max(0, expiresAt - Date.now()));
       announce('Private summary ready');
       go({ name: 'summary', id: thread });
     } else if (TERMINAL.includes(s.status)) {
@@ -461,10 +478,10 @@ function renderSummary() {
  * recognised by line shape, Markdown emphasis is stripped, known source IDs become reference chips. */
 function prose(text, ids) {
   const out = [], plain = s => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/__(.+?)__/g, '$1').replace(/`([^`]+)`/g, '$1');
-  const inline = s => {
-    const parts = plain(s).split(/\b([a-z]\d{1,3})\b/);
-    return parts.map((p, i) => i % 2 && ids.has(p) ? h('span', { class: 'ca-ref', text: p }) : p);
-  };
+  const chips = s => s.split(/\b([a-z]\d{1,3})\b/).map((p, i) => i % 2 && ids.has(p)
+    ? h('span', { class: 'ca-ref', 'aria-label': 'Message ' + p, text: p }) : p);
+  const inline = s => plain(s).split(/([\[(][a-z]\d{1,3}(?:\s*,\s*[a-z]\d{1,3})*[\])])/).flatMap((p, i) =>
+    i % 2 ? [h('span', { class: 'ca-citation' }, chips(p))] : chips(p));
   let para = [], items = null;
   const flush = () => {
     if (para.length) { out.push(h('p', {}, inline(para.join(' ')))); para = []; }
@@ -495,7 +512,7 @@ async function discardSummary() {
   busy.add('discard'); render();
   if (id) await api('cancel/' + id, {}).catch(() => {});
   busy.delete('discard');
-  const thread = result?.thread; result = null;
+  const thread = result?.thread; clearResult();
   if (route.name === 'summary') { outcome = { thread, text: 'Summary discarded.' }; back(); }
 }
 
@@ -584,7 +601,7 @@ function catalogLookup(account, videoId) {
 function togglePolicy() {
   const next = !state.private_route.enabled;
   return guarded('policy', async () => {
-    await stop(); result = null; outcome = null;
+    await stop(); clearResult(); outcome = null;
     try { await api('policy', { enabled: next }); await refresh(); announce(next ? 'Private processing on' : 'Private processing off'); }
     catch (e) { fail('Couldn’t change private processing', e); }
   });
@@ -592,7 +609,7 @@ function togglePolicy() {
 
 /* ---------- owner session ---------- */
 function sessionEnded() {
-  stop(); closeDialog(false); result = null; state = null;
+  stop(); closeDialog(false); clearResult(); state = null;
   if (route.name !== 'unlock') go({ name: 'unlock' });
 }
 let unlockError = '';
