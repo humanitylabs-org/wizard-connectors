@@ -16,4 +16,4 @@ Build `docker build --build-arg SOURCE_REVISION=<pushed-sha> -f app/Dockerfile -
 
 `python3 -m unittest discover -s tests -v` exercises policy/lifecycle without network. The checked-in compose is the portable manifest; pin `CONNECTORS_IMAGE` to the worker-built image in the local lifecycle installer. App Manager's approved checker plus shared-function gate remain authoritative. Production installation goes through App Manager, not manual registry edits.
 
-Shared UI kit/boot origins: Wizard App Manager `hello-wizard`, GPL-3.0-only. UI design: first-party Claude Opus consultation, implemented here; no private owner data in source.
+Shared UI kit/boot origins: Wizard App Manager `hello-wizard` (first-party Humanity Labs code, used here under MIT). UI design: first-party Claude Opus consultation, implemented here; no private owner data in source.
