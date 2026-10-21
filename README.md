@@ -12,8 +12,10 @@ Google account readiness and a real no-tool Tinfoil `glm-5-3` summary of fiction
 
 ## Run and package
 
-Build `docker build --build-arg SOURCE_REVISION=<pushed-sha> -f app/Dockerfile -t wizard-connectors:<pushed-sha> .` on the designated worker. Deploy the checked-in four-service compose, not just the UI container: UI is on internal networks, Google broker and private worker use distinct outbound lanes and credentials. The normal install form supplies all runtime configuration. Bind the UI through the authenticated Wizard route. Never bake secrets into images.
+`runtime.package: build` lets App Manager build the pinned source on either CPU architecture. All five services share the same repository-root context and `app/Dockerfile`; App Manager assigns each service its own local image name. The digest-pinned Python base installs distro ffmpeg and hash-locked, binary-only Python dependencies from `requirements.lock` (no native compilation).
 
-`python3 -m unittest discover -s tests -v` exercises policy/lifecycle without network. The checked-in compose is the portable manifest; pin `CONNECTORS_IMAGE` to the worker-built image in the local lifecycle installer. App Manager's approved checker plus shared-function gate remain authoritative. Production installation goes through App Manager, not manual registry edits.
+For development, build `docker build --build-arg SOURCE_REVISION=<pushed-sha> -f app/Dockerfile -t wizard-connectors:<pushed-sha> .` on the designated worker. Deploy the checked-in five-service compose, not just the UI container: UI is on internal networks, Google broker and private worker use distinct outbound lanes and credentials. The normal install form supplies all runtime configuration. Bind the UI through the authenticated Wizard route. Never bake secrets into images.
+
+`python3 -m unittest discover -s tests -v` exercises policy/lifecycle without network. Regenerate the cross-platform lock with `uv pip compile requirements.txt --universal --python-version 3.12 --generate-hashes -o requirements.lock`. The checked-in compose is the portable manifest; it no longer needs `CONNECTORS_IMAGE` or a manually prebuilt image. App Manager's approved checker plus shared-function gate remain authoritative. Production installation goes through App Manager, not manual registry edits.
 
 Shared UI kit/boot origins: Wizard App Manager `hello-wizard` (first-party Humanity Labs code, used here under MIT). UI design: first-party Claude Opus consultation, implemented here; no private owner data in source.

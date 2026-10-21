@@ -1,5 +1,4 @@
 x-security: &security
-  pull_policy: never
   user: "1000:1000"
   read_only: true
   cap_drop: [ALL]
@@ -10,7 +9,9 @@ x-security: &security
 services:
   ingress:
     <<: *security
-    image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
+    build: &build
+      context: .
+      dockerfile: app/Dockerfile
     command: [python, app/ingress.py]
     networks: [ingress-lane, edge]
     x-runtipi:
@@ -18,7 +19,7 @@ services:
       internal_port: 8799
   wizard-connectors:
     <<: *security
-    image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
+    build: *build
     environment:
       PORT: "8799"
       DATA_DIR: /data
@@ -36,7 +37,7 @@ services:
     networks: [ingress-lane, google-lane, private-lane, media-lane]
   google-broker:
     <<: *security
-    image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
+    build: *build
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: google
@@ -52,7 +53,7 @@ services:
     networks: [google-lane, google-egress]
   media-worker:
     <<: *security
-    image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
+    build: *build
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: media
@@ -63,7 +64,7 @@ services:
     networks: [media-lane, media-egress]
   private-worker:
     <<: *security
-    image: ${CONNECTORS_IMAGE:-wizard-connectors:reviewed}
+    build: *build
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: private

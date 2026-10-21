@@ -10,6 +10,7 @@ license: MIT
 source: https://github.com/humanitylabs-org/wizard-connectors
 runtime:
   kind: runtipi
+  package: build
   config: runtipi/config.json
   compose: runtipi/docker-compose.yml
 api:
