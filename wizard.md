@@ -6,7 +6,7 @@ type: service
 category: app
 version: 0.1.0
 summary: Review-gated Google account broker and simulated private chat summaries.
-license: GPL-3.0-only
+license: MIT
 source: https://github.com/humanitylabs-org/wizard-connectors
 runtime:
   kind: runtipi
