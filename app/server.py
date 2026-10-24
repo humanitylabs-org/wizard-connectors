@@ -14,6 +14,8 @@ from jobs import Jobs
 from private_model import PrivateModel, Blocked
 from service_rpc import RPC, RemotePrivateModel
 from google_broker import Denied
+from grants import calendar_caller
+import re
 
 ROOT = Path(__file__).resolve().parent.parent
 OWNER = os.environ.get("CONNECTORS_OWNER_TOKEN", "")
@@ -76,8 +78,39 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return False
 
+    def callback_guess(self):
+        # Only use configured trusted HTTPS origins, never a forwarded host.
+        origin = next(iter(sorted(o for o in ORIGINS if o.startswith('https://'))), '')
+        request_origin = 'https://' + self.headers.get('Host', '')
+        if request_origin in ORIGINS: origin = request_origin
+        if not origin: origin = 'http://' + self.headers.get('Host', 'localhost')
+        prefix = self.headers.get('X-Forwarded-Prefix', '/wizard-connectors').rstrip('/')
+        if not re.fullmatch(r'(?:/[A-Za-z0-9_-]+)*', prefix): prefix = '/wizard-connectors'
+        return origin + prefix + '/api/google/callback'
+
+    def calendar_service(self, path, data=None):
+        if not calendar_caller(self.headers): return self.send(403, {'error':'calendar_grant_required'})
+        try:
+            if path == '/service/calendar/status' and self.command == 'GET':
+                return self.send(200, broker.call('calendar_status'))
+            if path == '/service/calendar/calendars' and self.command == 'POST' and data == {}:
+                return self.send(200, broker.call('calendar_calendars'))
+            if path == '/service/calendar/events' and self.command == 'POST' and set(data) == {'account','calendar_id','time_min','time_max'}:
+                return self.send(200, broker.call('calendar_events', **data))
+            return self.send(400, {'error':'invalid_operation'})
+        except Denied as e: return self.send(409, {'error':str(e)})
+
+    def do_DELETE(self):
+        if not self.trusted(): return
+        if not self.human(): return self.send(401, {'error':'owner_auth_required'})
+        if urlsplit(self.path).path != '/api/google/client': return self.send(404, {'error':'not_found'})
+        try: return self.send(200, broker.call('clear_client'))
+        except Denied as e: return self.send(409, {'error':str(e)})
+
     def do_GET(self):
         path = urlsplit(self.path).path
+        if path.startswith('/service/calendar/'):
+            return self.calendar_service(path)
         if not self.trusted(callback=path == '/api/google/callback'): return
         if path == '/api/google/callback':
             # Google redirects use a separate Lax CSRF cookie, never the Strict owner session.
@@ -104,7 +137,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.human(): return self.send(401, {"error":"owner_auth_required"})
         try:
             if path == "/api/state":
-                return self.send(200, {"google":google_status(), "synthetic_only":True,
+                return self.send(200, {"google":{**google_status(), 'suggested_redirect_uri':self.callback_guess()}, "synthetic_only":True,
                     "private_route":{"model":"tinfoil/glm-5-3", "enabled":jobs.enabled, "configured":bool(model.key), "fallback":False, "tools":False},
                     "assurance":{"real_data_eligible":False,"host_admin_isolation":False,"network_confinement":os.environ.get('ISOLATED_PACKAGE') == 'true'},
                     "threads":[{"id":k,"title":v["title"],"count":len(v["messages"])} for k,v in THREADS.items()]})
@@ -119,8 +152,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(404, {"error":"not_found"})
 
     def do_POST(self):
-        if not self.trusted(): return
         path = urlsplit(self.path).path
+        is_calendar = path.startswith('/service/calendar/')
+        if is_calendar:
+            if not calendar_caller(self.headers): return self.send(403, {'error':'calendar_grant_required'})
+        elif not self.trusted(): return
         try:
             size = int(self.headers.get("Content-Length", "0"))
             if size < 1 or size > 8192: raise ValueError()
@@ -130,6 +166,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict): raise ValueError()
         except Exception:
             return self.send(400, {"error":"invalid_request"})
+        if is_calendar: return self.calendar_service(path, data)
         if path == "/api/session":
             token = data.get("token")
             if not OWNER or not isinstance(token,str) or not hmac.compare_digest(token, OWNER):
@@ -166,13 +203,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(202,jobs.create(data["thread"],data["request_id"]))
             if path.startswith("/api/cancel/") and not data:
                 return self.send(200,jobs.cancel(path.rsplit("/",1)[1]))
-            if path in ('/api/google/connect','/api/google/reconnect') and set(data) <= {'account','youtube'}:
-                if 'youtube' in data and not isinstance(data['youtube'],bool): raise ValueError()
+            if path == '/api/google/client' and set(data) == {'client_id','client_secret','redirect_uri'}:
+                return self.send(200,broker.call('save_client',**data))
+            if path in ('/api/google/connect','/api/google/reconnect') and set(data) <= {'account','youtube','calendar'}:
+                if any(k in data and type(data[k]) is not bool for k in ('youtube','calendar')): raise ValueError()
+                if data.get('account') is not None and not isinstance(data['account'],str): raise ValueError()
                 browser=secrets.token_urlsafe(32)
-                value=broker.call('start', browser=browser,account=data.get('account'),youtube=data.get('youtube',False))
+                value=broker.call('start', browser=browser,account=data.get('account'),youtube=data.get('youtube',False),calendar=data.get('calendar',False))
                 secure='; Secure' if any(o.startswith('https:') for o in ORIGINS) else ''
                 return self.send(200,value,cookie=f'connectors_oauth={browser}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600{secure}')
-            operations={'/api/music/bind':('bind',{'account','consent'}),'/api/music/unlink':('unlink',set()),
+            operations={'/api/calendar/bind':('calendar_bind',{'account','consent'}),'/api/music/bind':('bind',{'account','consent'}),'/api/music/unlink':('unlink',set()),
                         '/api/google/disconnect':('disconnect',{'account'}),'/api/music/catalog':('catalog',{'account','video_id'}),
                         '/api/music/audio-probe':('audio_probe',{'video_id'})}
             if path in operations:

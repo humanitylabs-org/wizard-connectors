@@ -13,7 +13,11 @@ services:
       context: .
       dockerfile: app/Dockerfile
     command: [python, app/ingress.py]
-    networks: [ingress-lane, edge]
+    networks:
+      ingress-lane: {}
+      edge: {}
+      main:
+        aliases: [wizard-connectors-calendar]
     x-runtipi:
       is_main: true
       internal_port: 8799
@@ -33,7 +37,9 @@ services:
       ISOLATED_PACKAGE: "true"
       WIZARD_TRUSTED_HOSTS: ${WIZARD_TRUSTED_HOSTS:-localhost,127.0.0.1}
       WIZARD_TRUSTED_ORIGINS: ${WIZARD_TRUSTED_ORIGINS:-}
-    volumes: ["ui-data:/data"]
+      WIZARD_GRANTS_FILE: /wizard/grants.json
+    # Mount directory, not inode: atomic grant replacements must be visible.
+    volumes: ["ui-data:/data", "${APP_DATA_DIR}/wizard:/wizard:ro"]
     networks: [ingress-lane, google-lane, private-lane, media-lane]
   google-broker:
     <<: *security
@@ -44,7 +50,8 @@ services:
       PORT: "8800"
       BROKER_DATA_DIR: /data
       BROKER_TOKEN: ${BROKER_TOKEN:?Required}
-      GOOGLE_REVIEW_APPROVED: ${GOOGLE_REVIEW_APPROVED:-false}
+      GOOGLE_DISABLED: ${GOOGLE_DISABLED:-false}
+      GOOGLE_STORE_SECRET: ${GOOGLE_STORE_SECRET:?Required}
       GOOGLE_STORE_KEY: ${GOOGLE_STORE_KEY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
@@ -78,6 +85,9 @@ volumes:
   ui-data: {}
   google-data: {}
 networks:
+  main:
+    external: true
+    name: ${WIZARD_MAIN_NETWORK:-runtipi_tipi_main_network}
   google-lane:
     internal: true
   ingress-lane:
