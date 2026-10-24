@@ -24,6 +24,7 @@ try{
  check('Google blocker honest',(await page.locator('dialog').innerText()).includes('google_configuration_required'));
  await page.getByRole('button',{name:'OK',exact:true}).click();
  await page.screenshot({path:path.join(root,'desktop-google.png'),fullPage:true});
+ await page.getByRole('button',{name:'← Back',exact:true}).click();
  await page.locator('#chat-row').click();
  await page.locator('.message').nth(7).waitFor();
  check('fictional bounded source',await page.locator('.message').count()===8);
