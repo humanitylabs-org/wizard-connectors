@@ -57,7 +57,7 @@ try:
     run(compose+['up','-d','--no-build'])
     # Readiness is checked through the consumer network, not a host-published port.
     probe = ['docker','run','--rm','--network',network,image,'python3','-c',
-             "import urllib.request; print(urllib.request.urlopen('http://wizard-connectors-calendar:8799/healthz',timeout=3).read().decode())"]
+             "import urllib.request; q=urllib.request.Request('http://wizard-connectors-calendar:8799/service/calendar/status',headers={'X-Wizard-Grant':'FAKE_CALENDAR_GRANT_FOR_ISOLATED_PROOF_ONLY'}); print(urllib.request.urlopen(q,timeout=3).read().decode())"]
     ready=False
     for _ in range(20):
         if run(probe,check=False).returncode==0: ready=True; break
