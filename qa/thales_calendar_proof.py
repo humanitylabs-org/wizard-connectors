@@ -12,7 +12,7 @@ import sys
 import time
 
 root = Path(__file__).resolve().parents[1]
-if not str(root).startswith('/Volumes/ThalesMedia/builds/'):
+if not str(root).lower().startswith('/volumes/thalesmedia/builds/'):  # APFS is case-insensitive; realpath may return Builds
     raise SystemExit('Run this proof only on the configured Thales external build volume')
 revision = sys.argv[1]
 env = dict(os.environ, PATH='/opt/homebrew/bin:/usr/local/bin:' + os.environ.get('PATH',''), DOCKER_CONTEXT='colima')
