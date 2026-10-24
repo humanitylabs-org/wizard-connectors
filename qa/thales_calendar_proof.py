@@ -91,7 +91,7 @@ try:
         shutil.copytree(src, dst)
     fixture_log=(proof/'browser-fixture.log').open('w')
     fixture=subprocess.Popen(['docker','run','--rm','--name','wcon-byo-browser-proof',
-        '-p','127.0.0.1:19476:8799','--tmpfs','/tmp:rw,size=64m',
+        '-p','127.0.0.1:19478:8799','--tmpfs','/tmp:rw,size=64m',
         '-v',str(vm_share/'qa')+':/app/qa:ro','-v',str(vm_share/'support-core')+':/qa-support/core:ro','-v',str(vm_share/'support-kit')+':/qa-support/kit:ro',
         '-e','QA_CORE_DIR=/qa-support/core','-e','QA_KIT_DIR=/qa-support/kit',
         image,'python3','qa/byo_browser_server.py'],env=env,stdout=fixture_log,stderr=subprocess.STDOUT)
@@ -100,7 +100,7 @@ try:
         for _ in range(30):
             if fixture.poll() is not None: raise RuntimeError('browser_fixture_exited: '+(proof/'browser-fixture.log').read_text()[-500:])
             try:
-                urllib.request.urlopen('http://127.0.0.1:19476/healthz',timeout=2).close(); break
+                urllib.request.urlopen('http://127.0.0.1:19478/healthz',timeout=2).close(); break
             except Exception: time.sleep(1)
         else: raise RuntimeError('browser_fixture_not_ready')
         browser_run=subprocess.run(['node','qa/byo_browser.mjs'],cwd=root,env=browser_env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=240)

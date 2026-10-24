@@ -54,8 +54,11 @@ with tempfile.TemporaryDirectory() as tmp:
                 return self.send(200,path.read_bytes(),'text/css')
             if name=='/_qa/host.js':
                 return self.send(200,b'window.WizAppServices={connect:(w,c)=>{window.__qaBack=c.back;return null;}};', 'text/javascript')
+            if name=='/_qa/host.css':
+                # App CSP forbids inline styles, so the mock host's frame sizing is a stylesheet.
+                return self.send(200,b'html,body{margin:0;height:100%}iframe{border:0;display:block;width:100%;height:100dvh}','text/css')
             if name=='/_qa/host':
-                return self.send(200,b'<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Explicit mock Appearance host</title><script src="/_qa/host.js"></script><body style="margin:0"><iframe title="Connected accounts QA" src="/" style="border:0;display:block;width:100%;height:100dvh"></iframe></body></html>','text/html')
+                return self.send(200,b'<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Explicit mock Appearance host</title><link rel="stylesheet" href="/_qa/host.css"><script src="/_qa/host.js"></script><body><iframe title="Connected accounts QA" src="/"></iframe></body></html>','text/html')
             return super().do_GET()
     ui=ThreadingHTTPServer(('127.0.0.1',8888),UI)
     threading.Thread(target=ui.serve_forever,daemon=True).start()
