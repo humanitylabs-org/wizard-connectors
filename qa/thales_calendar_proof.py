@@ -40,7 +40,9 @@ network = 'wcon-byo-proof-main'
 run(['docker','network','inspect',network],check=False)
 existing = subprocess.run(['docker','network','inspect',network],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 if existing.returncode: run(['docker','network','create',network])
-data = proof/'app-data'
+# Colima shares only the macOS home into its VM; /Volumes bind mounts appear empty,
+# so the read-only grants mount would fail closed. Keep this tiny fixture under ~.
+data = Path.home()/'.cache'/'wcon-byo-proof'/'app-data'
 (data/'wizard').mkdir(parents=True,exist_ok=True)
 key = 'FAKE_CALENDAR_GRANT_FOR_ISOLATED_PROOF_ONLY'
 grants = {'outgoing':{},'incoming':[{'from':'calendar','sha256':hashlib.sha256(key.encode()).hexdigest()}], 'provider_endpoints':{},'enforce':True}
