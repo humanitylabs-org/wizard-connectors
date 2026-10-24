@@ -61,7 +61,7 @@ class BrokerHTTPTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.fake=FakeGoogle()
         self.config={'BROKER_DATA_DIR':self.tmp.name+'/broker','GOOGLE_STORE_KEY':Fernet.generate_key().decode(),
-                     'GOOGLE_REVIEW_APPROVED':'true','GOOGLE_CLIENT_ID':'fixture-client','GOOGLE_CLIENT_SECRET':'FAKE_CLIENT_SECRET',
+                     'GOOGLE_CLIENT_ID':'fixture-client','GOOGLE_CLIENT_SECRET':'FAKE_CLIENT_SECRET',
                      'GOOGLE_REDIRECT_URI':'http://127.0.0.1/api/google/callback'}
         self.b=Broker(self.config,self.fake)
         self.env=patch.dict(os.environ,{'PORT':'0','BROKER_TOKEN':'b'*40,'DATA_DIR':self.tmp.name+'/ui','CONNECTORS_OWNER_TOKEN':'o'*40,'CONNECTORS_MCP_TOKEN':'m'*40})
@@ -331,6 +331,11 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(self.req('/service/calendar/events',body,owner=False,headers=h)[1]['error'],'reauth_required')
         self.assertEqual(Broker(self.config,self.fake).state['calendar_binding']['accounts'],[])
 
+    def test_legacy_review_flag_no_longer_blocks(self):
+        self.config['GOOGLE_REVIEW_APPROVED']='false'
+        self.assertIsNone(self.b.gate())
+        self.connect()
+
     def test_calendar_scope_loss_and_disabled(self):
         aid=self.calendar_connect();self.b.calendar_bind(aid,True);h=self.grant();body=self.event_body(aid)
         self.config['GOOGLE_DISABLED']='true'
@@ -340,6 +345,42 @@ class BrokerHTTPTests(unittest.TestCase):
         self.fake.scopes=IDENTITY;self.b.state['accounts'][aid]['expires']=0
         self.assertEqual(self.req('/service/calendar/events',body,owner=False,headers=h)[1]['error'],'scope_consent_required')
         self.assertEqual(Broker(self.config,self.fake).state['calendar_binding']['accounts'],[])
+
+    def test_calendar_callback_scope_loss_removes_binding(self):
+        aid=self.calendar_connect();self.b.calendar_bind(aid,True)
+        p=self.start(account=aid)
+        self.fake.scopes=IDENTITY
+        self.assertEqual(self.finish(p)[0],400)
+        self.assertEqual(self.b.status()['calendar_binding']['accounts'],[])
+        self.assertEqual(self.b.state['accounts'][aid]['status'],'reauth_required')
+
+    def test_env_client_replacement_requires_reauth_on_restart(self):
+        aid=self.calendar_connect();self.b.calendar_bind(aid,True)
+        b=Broker({**self.config,'GOOGLE_CLIENT_SECRET':'FAKE_CHANGED_ENV_SECRET'},self.fake)
+        self.assertEqual(b.status()['accounts'][0]['status'],'reauth_required')
+        self.assertEqual(b.state['calendar_binding']['accounts'],[])
+        self.assertEqual(b.state['accounts'][aid]['access_token'],'')
+
+    def test_calendar_transport_fixed_endpoint_and_encoded_path(self):
+        from unittest.mock import MagicMock
+        opener=MagicMock()
+        opener.open.return_value.__enter__.return_value.read.return_value=b'{"items":[]}'
+        with patch('google_broker.build_opener',return_value=opener):
+            GoogleTransport().request('events',token='FAKE_ACCESS',calendar_id='x@example.invalid/?evil=https://evil.invalid',query={'singleEvents':'true'})
+        request=opener.open.call_args.args[0]
+        u=urlsplit(request.full_url)
+        self.assertEqual(u.netloc,'www.googleapis.com')
+        self.assertEqual(u.path,'/calendar/v3/calendars/x%40example.invalid%2F%3Fevil%3Dhttps%3A%2F%2Fevil.invalid/events')
+        self.assertEqual(parse_qs(u.query),{'singleEvents':['true']})
+        self.assertEqual(request.get_header('Authorization'),'Bearer FAKE_ACCESS')
+        self.assertEqual(GoogleTransport.ENDPOINTS['calendars'],'https://www.googleapis.com/calendar/v3/users/me/calendarList')
+
+    def test_calendar_permission_loss_removes_binding(self):
+        aid=self.calendar_connect();self.b.calendar_bind(aid,True);h=self.grant()
+        self.fake.calendar_error='provider_permission_denied'
+        self.assertEqual(self.req('/service/calendar/calendars',{},owner=False,headers=h)[1]['error'],'provider_permission_denied')
+        self.assertEqual(self.b.status()['calendar_binding']['accounts'],[])
+        self.assertEqual(self.b.state['accounts'][aid]['status'],'reauth_required')
 
     def test_callback_guess_trusted_origin_and_prefix(self):
         with patch.object(self.ui,'ORIGINS',{'https://owner.example'}):

@@ -62,6 +62,7 @@ class GoogleTransport:
             if operation == 'token' and e.code == 400:
                 raise Denied('reauth_required') from None
             if e.code == 401: raise Denied('reauth_required') from None
+            if e.code == 403 and operation in ('calendars','events'): raise Denied('provider_permission_denied') from None
             if e.code == 403: raise Denied('provider_permission_denied') from None
             raise Denied('provider_unavailable') from None
         except Denied: raise
@@ -155,6 +156,20 @@ class Broker:
         self.state.setdefault('calendar_binding', {'app':'calendar', 'accounts':[], 'operations':['calendar.list','events.list']})
         self.pending = {}
         self.lock = threading.RLock()
+        # An installer replacing an env client is a replacement too. Never reuse
+        # an old client's still-live access token under a different OAuth app.
+        if self.state['accounts'] and self.state.get('client_fingerprint') != self._fingerprint(self.state):
+            new = self._copy()
+            for a in new['accounts'].values(): a.update(status='reauth_required',access_token='',refresh_token='')
+            new['binding'] = None
+            new['calendar_binding']['accounts'] = []
+            self._commit(new)
+
+    def _fingerprint(self, state):
+        c, source = self.client()
+        if source == 'owner': c = state.get('client') or {}
+        return hashlib.sha256(json.dumps(c, sort_keys=True).encode()).hexdigest()
+
     def client(self):
         # Any environment client setting reserves configuration for the installer;
         # partial env configuration must not silently fall back to an owner secret.
@@ -198,6 +213,7 @@ class Broker:
     def _ready(self):
         if self.gate(): raise Denied(self.gate())
     def _commit(self, state):
+        state['client_fingerprint'] = self._fingerprint(state)
         self.store.save(state)
         self.state = state
     def _copy(self): return json.loads(json.dumps(self.state))
@@ -254,7 +270,10 @@ class Broker:
             value = self.provider.request('token', form={'grant_type': 'authorization_code', 'code': code,
                       'client_id': self.client()[0]['client_id'], 'client_secret': self.client()[0]['client_secret'],
                       'redirect_uri': self.client()[0]['redirect_uri'], 'code_verifier': p['verifier']})
-            scopes, expiry = self._tokens(value, p['scopes'])
+            try: scopes, expiry = self._tokens(value, p['scopes'])
+            except Denied as e:
+                if p.get('account'): self._invalidate(p['account'], e)
+                raise
             claims = self.provider.verify(value.get('id_token', ''), self.client()[0]['client_id'], p['nonce'])
             aid = 'google-' + hashlib.sha256(claims['sub'].encode()).hexdigest()[:32]
             if p['account'] and p['account'] != aid: raise Denied('wrong_account_reauthentication')
@@ -384,7 +403,7 @@ class Broker:
     def calendar_calendars(self):
         with self.lock:
             self._ready()
-            result = []
+            result = []; size = 0
             # Snapshot: refresh failure may remove this binding while iterating.
             for account in list(self.state['calendar_binding']['accounts']):
                 try:
@@ -396,10 +415,12 @@ class Broker:
                         for row in raw.get('items', [])[:250]:
                             cid = row.get('id')
                             validate_calendar_id(cid)
-                            result.append({'account':account, 'email':a.get('email',''), 'id':cid,
+                            item = {'account':account, 'email':a.get('email',''), 'id':cid,
                                 'name':str(row.get('summary',''))[:500], 'color':str(row.get('backgroundColor',''))[:32],
-                                'primary':row.get('primary') is True, 'access_role':str(row.get('accessRole',''))[:32]})
-                            if len(json.dumps(result).encode()) > MAX_OUTPUT_BYTES - 4096: raise Denied('calendar_list_too_large')
+                                'primary':row.get('primary') is True, 'access_role':str(row.get('accessRole',''))[:32]}
+                            size += len(json.dumps(item).encode()) + 2
+                            if size > MAX_OUTPUT_BYTES - 4096: raise Denied('calendar_list_too_large')
+                            result.append(item)
                         page = raw.get('nextPageToken')
                         if not page: break
                         if not isinstance(page,str) or len(page)>2048: raise Denied('invalid_provider_page')

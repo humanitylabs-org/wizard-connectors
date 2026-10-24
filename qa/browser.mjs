@@ -21,7 +21,7 @@ try{
  await page.locator('#google-row').click();
  await page.getByRole('button',{name:'Connect Google',exact:true}).click();
  await page.locator('dialog[open]').waitFor();
- check('Google blocker honest',(await page.locator('dialog').innerText()).includes('isolation_review_required'));
+ check('Google blocker honest',(await page.locator('dialog').innerText()).includes('google_configuration_required'));
  await page.getByRole('button',{name:'OK',exact:true}).click();
  await page.screenshot({path:path.join(root,'desktop-google.png'),fullPage:true});
  await page.locator('#chat-row').click();

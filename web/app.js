@@ -36,7 +36,7 @@ function renderGoogleApp(g){
  const form=append('form',undefined,'wz-sec');
  function field(label,type,value,max){const l=element('label',label,'wz-label');const i=element('input',undefined,'wz-input');i.type=type;i.value=value;i.maxLength=max;i.required=true;i.autocomplete='off';l.append(i);form.append(l);return i;}
  const redirect=field('Authorized redirect URI','url',g.redirect_uri||g.suggested_redirect_uri||new URL('api/google/callback',location.href).href,2048);
- button('Copy redirect URI',async()=>{try{await navigator.clipboard.writeText(redirect.value);dialog('Copied','Redirect URI copied.');}catch{dialog('Copy unavailable','Select and copy the redirect URI shown above.');}}).type='button';
+ button('Copy redirect URI',async()=>{try{await navigator.clipboard.writeText(redirect.value);dialog('Copied','Redirect URI copied.');}catch{dialog('Copy unavailable','Select and copy the redirect URI shown above.');}},form).type='button';
  const id=field('Client ID','text',g.client_id||'',230);
  const secret=field('Client secret (paste to save or replace)','password','',512);secret.minLength=8;
  const managed=g.client_source==='env';
@@ -51,7 +51,7 @@ function renderGoogle(){
  append('h2','Google accounts');const g=state.google;renderGoogleApp(g);
  append('span',g.state==='connected'?'Connected':g.state==='unavailable'?'Broker unavailable':'Not connected','badge');
  if(g.blocker)append('p',g.blocker==='google_configuration_required'?'Save your Google app above before connecting.':'Account operations unavailable: '+g.blocker);
- button('Connect Google',()=>authorize());button('Refresh accounts',()=>refresh().catch(e=>dialog('Refresh unavailable',errorText(e.message))));
+ button('Connect Google',()=>authorize());button('Refresh accounts',()=>{if(clientHold&&!confirm('Discard unsaved Google app configuration and refresh?'))return;clientHold?.release();clientHold=null;refresh().catch(e=>dialog('Refresh unavailable',errorText(e.message)));});
  append('h3','Identity and granted permissions');
  if(!g.accounts.length)append('p','No Google account connected. Identity permission alone does not authorize Music catalog or audio.');
  for(const a of g.accounts){
