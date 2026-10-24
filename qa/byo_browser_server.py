@@ -59,7 +59,11 @@ with tempfile.TemporaryDirectory() as tmp:
             return super().do_GET()
     ui=ThreadingHTTPServer(('127.0.0.1',8888),UI)
     threading.Thread(target=ui.serve_forever,daemon=True).start()
-    import ingress
-    try:ThreadingHTTPServer(('0.0.0.0',8799),ingress.Handler).serve_forever()
+    import http.client, types, ingress
+    # Real ingress relay code; only its fixed upstream host maps to this in-process UI.
+    class _Upstream(http.client.HTTPConnection):
+        def __init__(self,host,port,**kw):super().__init__('127.0.0.1',8888,**kw)
+    ingress.http=types.SimpleNamespace(client=types.SimpleNamespace(HTTPConnection=_Upstream))
+    try:ThreadingHTTPServer(('0.0.0.0',8799),ingress.Ingress).serve_forever()
     finally:
         ui.shutdown();ui.server_close();rpc.shutdown();rpc.server_close()
