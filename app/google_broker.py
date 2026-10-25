@@ -439,7 +439,7 @@ class Broker:
             try:
                 a = self._calendar_account(account)
                 query = {'timeMin':time_min, 'timeMax':time_max, 'singleEvents':'true', 'orderBy':'startTime',
-                         'maxResults':2500, 'fields':'nextPageToken,items(id,summary,start,end,location,status,htmlLink)'}
+                         'maxResults':2500, 'fields':'nextPageToken,items(id,summary,start,end,location,status,htmlLink,description,hangoutLink,iCalUID,attendees(self,responseStatus),conferenceData(entryPoints(entryPointType,uri)))'}
                 result = []; size = 0; page = None
                 for _ in range(MAX_PAGES):
                     raw = self.provider.request('events', token=a['access_token'], query=query, calendar_id=calendar_id)
@@ -451,6 +451,20 @@ class Broker:
                             'location':str(row.get('location',''))[:2000], 'status':str(row.get('status',''))[:32]}
                         link = row.get('htmlLink')
                         if isinstance(link,str) and len(link)<=2048 and urlsplit(link).scheme=='https': event['html_link']=link
+                        # Only bounded display details, not guest identities, cross
+                        # the existing grant-scoped calendar-source boundary.
+                        event['description'] = str(row.get('description') or '')[:4000]
+                        if row.get('iCalUID'): event['ical_uid'] = str(row['iCalUID'])[:1024]
+                        attendees = row.get('attendees') or []
+                        if not isinstance(attendees, list): raise Denied('invalid_provider_event')
+                        event['attendee_count'] = min(len(attendees), 10000)
+                        mine = next((a for a in attendees if isinstance(a, dict) and a.get('self')), {})
+                        response = mine.get('responseStatus')
+                        if response in ('accepted', 'declined', 'tentative', 'needsAction'): event['self_response'] = response
+                        meet = row.get('hangoutLink') or next((e.get('uri') for e in (row.get('conferenceData') or {}).get('entryPoints', []) if isinstance(e, dict) and e.get('entryPointType') == 'video'), None)
+                        if isinstance(meet, str) and len(meet) <= 2000:
+                            u = urlsplit(meet)
+                            if u.scheme == 'https' and u.hostname and not u.username and not u.password: event['meet'] = meet
                         size += len(json.dumps(event).encode()) + 2
                         if size > MAX_OUTPUT_BYTES - 4096: return {'events':result, 'truncated':True}
                         result.append(event)

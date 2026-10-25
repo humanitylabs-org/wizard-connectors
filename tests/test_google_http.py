@@ -36,7 +36,7 @@ class FakeGoogle(GoogleTransport):
             calls=self.calendar_calls if operation=='calendars' else self.event_calls
             calls.append(dict(query));page=int(query.get('pageToken','0'))
             row=({'id':'primary@example.invalid','summary':'FAKE calendar','backgroundColor':'FAKE_COLOR','primary':True,'accessRole':'owner'}
-                 if operation=='calendars' else {'id':'fake-event-'+str(page),'summary':'FAKE event','start':{'date':'2026-10-24'},'end':{'date':'2026-10-25'},'status':'confirmed','location':'FAKE room','htmlLink':'https://calendar.google.com/fixture'})
+                 if operation=='calendars' else {'id':'fake-event-'+str(page),'summary':'FAKE event','start':{'date':'2026-10-24'},'end':{'date':'2026-10-25'},'status':'confirmed','location':'FAKE room','htmlLink':'https://calendar.google.com/fixture','description':'FAKE notes','iCalUID':'fake-uid@google.com','hangoutLink':'https://meet.google.com/fak-efak-efa','attendees':[{'self':True,'responseStatus':'declined','email':'fake@example.invalid'},{'email':'other@example.invalid'}]})
             result={'items':[row]}
             pages=self.calendar_pages if operation=='calendars' else self.event_pages
             if page+1 < pages:result['nextPageToken']=str(page+1)
@@ -318,6 +318,8 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(code,200);self.assertEqual(len(out['events']),2);self.assertFalse(out['truncated'])
         self.assertEqual(self.fake.refreshes,1);self.assertTrue(out['events'][0]['all_day'])
         self.assertEqual(out['events'][0]['start'],'2026-10-24');self.assertIn('html_link',out['events'][0])
+        e=out['events'][0];self.assertEqual((e['description'],e['ical_uid'],e['attendee_count'],e['self_response'],e['meet']),('FAKE notes','fake-uid@google.com',2,'declined','https://meet.google.com/fak-efak-efa'))
+        self.assertNotIn('example.invalid',json.dumps(out))
         query=self.fake.event_calls[0];self.assertEqual(query['maxResults'],2500);self.assertEqual(query['singleEvents'],'true');self.assertIn('fields',query)
         self.fake.event_calls=[];self.fake.event_pages=99
         self.assertTrue(self.req('/service/calendar/events',body,owner=False,headers=h)[1]['truncated'])
