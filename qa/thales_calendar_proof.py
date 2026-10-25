@@ -45,7 +45,7 @@ if existing.returncode: run(['docker','network','create',network])
 data = Path.home()/'.cache'/'wcon-byo-proof'/'app-data'
 (data/'wizard').mkdir(parents=True,exist_ok=True)
 key = 'FAKE_CALENDAR_GRANT_FOR_ISOLATED_PROOF_ONLY'
-grants = {'outgoing':{},'incoming':[{'from':'calendar','sha256':hashlib.sha256(key.encode()).hexdigest()}], 'provider_endpoints':{},'enforce':True}
+grants = {'outgoing':{},'incoming':[{'from':'wizard-calendar','sha256':hashlib.sha256(key.encode()).hexdigest()}], 'provider_endpoints':{},'enforce':True}
 (data/'wizard'/'grants.json').write_text(json.dumps(grants))
 env.update({name:('FAKE_'+name+'_')*4 for name in ('CONNECTORS_OWNER_TOKEN','CONNECTORS_MCP_TOKEN','MUSIC_ADAPTER_TOKEN','BROKER_TOKEN','PRIVATE_WORKER_TOKEN','MEDIA_WORKER_TOKEN','GOOGLE_STORE_SECRET')})
 env.update(APP_DATA_DIR=str(data),WIZARD_MAIN_NETWORK=network)
@@ -53,7 +53,9 @@ env.update(APP_DATA_DIR=str(data),WIZARD_MAIN_NETWORK=network)
 # accidentally rebuild another revision or touch the live install project.
 services = ('ingress','wizard-connectors','google-broker','media-worker','private-worker')
 override = proof/'compose-image.json'
-override.write_text(json.dumps({'services':{s:{'image':image} for s in services}}))
+# Model WAM's standard injection; the app recipe must not declare this mount.
+assert '${APP_DATA_DIR}/wizard:/wizard:ro' not in (root/'runtipi/docker-compose.yml').read_text()
+override.write_text(json.dumps({'services':{s:{'image':image, 'volumes':[str(data/'wizard')+':/wizard:ro'], 'environment':{'WIZARD_GRANTS_FILE':'/wizard/grants.json'}} for s in services}}))
 compose = ['docker','compose','--project-directory',str(root),'-p','wcon-byo-proof','-f','runtipi/docker-compose.yml','-f',str(override)]
 try:
     run(compose+['up','-d','--no-build'])

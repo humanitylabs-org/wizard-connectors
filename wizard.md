@@ -43,9 +43,11 @@ Music binding is separate; private chat remains synthetic-only.
 Calendar consumer base URL: **http://wizard-connectors-calendar:8799** (the
 `ingress` service's unique network alias on `runtipi_tipi_main_network`). Paths:
 `/service/calendar/status`, `/service/calendar/calendars`, `/service/calendar/events`.
-WAM layer-2 grants must contain an incoming SHA-256 row for `calendar`;
+WAM layer-2 grants must contain an incoming SHA-256 row for `wizard-calendar`;
 Calendar sends its key as `X-Wizard-Grant`. There is no owner-session requirement
 on this service API. Report-only mode does not weaken Calendar authentication.
-`APP_DATA_DIR/wizard` is mounted read-only into the UI; other services do not
-receive the grants file. Shared network name can be configured with
+WAM injects the standard read-only grants directory into all app services; the
+recipe must not mount an app-specific bridge. Ingress is `is_main`, port 8799, so
+WAM publishes it under `provider_endpoints["wizard-connectors"]`. The shared
+network name can be configured with
 `WIZARD_MAIN_NETWORK` for isolated staging. See docs/CALENDAR_API.md.

@@ -217,7 +217,7 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(self.finish(params)[0],200)
         return self.b.status()['accounts'][-1]['id']
 
-    def grant(self, enforce=True, caller='calendar', key='FAKE_GRANT_KEY'):
+    def grant(self, enforce=True, caller='wizard-calendar', key='FAKE_GRANT_KEY'):
         import hashlib
         self.grants=Path(self.tmp.name)/'grants.json'
         self.grants.write_text(json.dumps({'outgoing':{},'provider_endpoints':{},'incoming':[{'from':caller,'sha256':hashlib.sha256(key.encode()).hexdigest()}],'enforce':enforce}))
@@ -299,6 +299,8 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(self.req(path,owner=False)[0],403)
         self.assertEqual(self.req(path,owner=False,headers={'X-Wizard-App':'calendar'})[0],403)
         self.assertEqual(self.req(path,owner=False,headers=h)[0],200)
+        # Canonical package id only; the old launcher/handwritten bridge id is not authority.
+        self.grant(caller='calendar');self.assertEqual(self.req(path,owner=False,headers=h)[0],403)
         self.grant(caller='music');self.assertEqual(self.req(path,owner=False,headers=h)[0],403)
         self.grant(key='ROTATED_KEY');self.assertEqual(self.req(path,owner=False,headers=h)[0],403)
         self.grants.write_text('{broken');self.assertEqual(self.req(path,owner=False,headers=h)[0],403)

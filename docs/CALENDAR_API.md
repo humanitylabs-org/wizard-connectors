@@ -4,14 +4,17 @@ Consumer base: `http://wizard-connectors-calendar:8799` — the `ingress` servic
 unique alias on the shared Runtipi main network (`runtipi_tipi_main_network` by
 default, overridable via `WIZARD_MAIN_NETWORK` for isolated staging). Ingress
 forwards to the internal UI, which verifies the grant before calling the broker.
-The UI, not ingress, mounts `${APP_DATA_DIR}/wizard:/wizard:ro` and sets
-`WIZARD_GRANTS_FILE=/wizard/grants.json`. Mounting the directory preserves atomic
-file replacement/revocation visibility. Runtipi also marks ingress `is_main`.
+The App Manager injects its standard `${APP_DATA_DIR}/wizard:/wizard:ro` mount
+and `WIZARD_GRANTS_FILE=/wizard/grants.json` into the app services. The application
+recipe does not declare a grants mount. The UI verifies the grant; the read-only
+directory preserves atomic replacement/revocation visibility. Ingress is `is_main`
+with `internal_port: 8799`: WAM must publish that service, not the internal UI,
+as `provider_endpoints["wizard-connectors"]`. Consumers use that endpoint first.
 No host port is needed for app-to-app access.
 
 Every request requires `X-Wizard-Grant: <Calendar's key>`. The provider hashes
 that header with SHA-256 and constant-time matches an incoming row with
-`from: "calendar"`. The JSON file is re-read on every request. Missing, unset,
+`from: "wizard-calendar"`. The JSON file is re-read on every request. Missing, unset,
 unreadable or malformed configuration denies access with HTTP 403. Owner tokens,
 MCP tokens and `X-Wizard-App` are not substitutes. **Unlike the transitional
 report-only rule in PERMISSIONS.md, Calendar always requires a matching grant,
@@ -20,7 +23,7 @@ Unknown report-only callers are logged without keys or request content.
 
 File shape (provider has hashes, not caller keys):
 ```json
-{"outgoing": {}, "incoming": [{"from": "calendar", "sha256": "<64 lowercase hex>"}], "provider_endpoints": {}, "enforce": true}
+{"outgoing": {}, "incoming": [{"from": "wizard-calendar", "sha256": "<64 lowercase hex>"}], "provider_endpoints": {}, "enforce": true}
 ```
 
 ## Exact wire contracts
