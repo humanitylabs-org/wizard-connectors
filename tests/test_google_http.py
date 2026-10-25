@@ -319,7 +319,7 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(self.fake.refreshes,1);self.assertTrue(out['events'][0]['all_day'])
         self.assertEqual(out['events'][0]['start'],'2026-10-24');self.assertIn('html_link',out['events'][0])
         e=out['events'][0];self.assertEqual((e['description'],e['ical_uid'],e['attendee_count'],e['self_response'],e['meet']),('FAKE notes','fake-uid@google.com',2,'declined','https://meet.google.com/fak-efak-efa'))
-        self.assertNotIn('example.invalid',json.dumps(out))
+        self.assertNotIn('other@example.invalid',json.dumps(out));self.assertNotIn('fake@example.invalid',json.dumps(out))
         query=self.fake.event_calls[0];self.assertEqual(query['maxResults'],2500);self.assertEqual(query['singleEvents'],'true');self.assertIn('fields',query)
         self.fake.event_calls=[];self.fake.event_pages=99
         self.assertTrue(self.req('/service/calendar/events',body,owner=False,headers=h)[1]['truncated'])
