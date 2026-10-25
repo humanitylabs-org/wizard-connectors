@@ -21,7 +21,7 @@ os.environ.update(DATA_DIR='/tmp/byo-ui-fixture',PORT='0',BIND_HOST='127.0.0.1',
                   WIZARD_TRUSTED_ORIGINS='https://owner.example',WIZARD_GRANTS_FILE='/tmp/byo-fixture-grants.json')
 import hashlib
 import json
-Path(os.environ['WIZARD_GRANTS_FILE']).write_text(json.dumps({'outgoing':{},'provider_endpoints':{},'incoming':[{'from':'calendar','sha256':hashlib.sha256(b'FAKE_BROWSER_CALENDAR_GRANT').hexdigest()}],'enforce':True}))
+Path(os.environ['WIZARD_GRANTS_FILE']).write_text(json.dumps({'outgoing':{},'provider_endpoints':{},'incoming':[{'from':'wizard-calendar','sha256':hashlib.sha256(b'FAKE_BROWSER_CALENDAR_GRANT').hexdigest()}],'enforce':True}))
 
 with tempfile.TemporaryDirectory() as tmp:
     broker=Broker({'BROKER_DATA_DIR':tmp,'GOOGLE_STORE_SECRET':'FAKE_BROWSER_STORE_SECRET_'*4},FakeGoogle())
