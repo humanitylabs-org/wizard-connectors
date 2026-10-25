@@ -51,8 +51,10 @@ Only the broker receives Google client/key settings and encrypted volume.
 UI → broker uses existing token-authenticated fixed RPC, not generic fetch.
 Five services retain isolated networks, non-root/read-only execution, capability
 drops, bounded tmpfs, no-new-privileges and no host sockets/home mounts. Ingress
-joins the shared main network for grant-checked Calendar access; the UI alone
-mounts the read-only per-app grants directory. See [Calendar API](CALENDAR_API.md).
+joins the shared main network for grant-checked Calendar access. WAM injects the
+standard read-only grants directory into app services; the application recipe
+contains no grants mount. The UI validates incoming `wizard-calendar` grants.
+See [Calendar API](CALENDAR_API.md).
 Google/private/media outbound lanes remain separate. Host administrators remain
 trusted; this is not host-admin-resistant isolation.
 
