@@ -3,7 +3,7 @@ wizard: 0.2
 id: wizard-connectors
 name: Connected accounts
 type: external
-category: system
+category: app
 version: 0.1.1
 summary: Review-gated Google account broker and simulated private chat summaries.
 license: MIT
