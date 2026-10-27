@@ -1,17 +1,15 @@
 {
   "name": "Connected accounts",
   "id": "wizard-connectors",
-  "wizard_type": "service",
+  "wizard_type": "external",
   "available": true,
-  "short_desc": "Google readiness and simulated private chat.",
+  "short_desc": "External: Google readiness and simulated private chat.",
   "author": "Humanity Labs",
   "port": 8799,
-  "categories": [
-    "utilities"
-  ],
+  "categories": ["network"],
   "description": "Synthetic-only connected accounts preview. Real account activation requires isolation review.",
-  "tipi_version": 1,
-  "version": "0.1.0",
+  "tipi_version": 2,
+  "version": "0.1.1",
   "source": "https://github.com/humanitylabs-org/wizard-connectors",
   "exposable": false,
   "supported_architectures": [
@@ -19,7 +17,7 @@
     "arm64"
   ],
   "created_at": 1791500000000,
-  "updated_at": 1791500000000,
+  "updated_at": 1793115272241,
   "dynamic_config": true,
   "min_tipi_version": "4.8.0",
   "uid": 1000,

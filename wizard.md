@@ -2,9 +2,9 @@
 wizard: 0.2
 id: wizard-connectors
 name: Connected accounts
-type: service
-category: app
-version: 0.1.0
+type: external
+category: system
+version: 0.1.1
 summary: Review-gated Google account broker and simulated private chat summaries.
 license: MIT
 source: https://github.com/humanitylabs-org/wizard-connectors
