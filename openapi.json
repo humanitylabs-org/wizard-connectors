@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Connected accounts synthetic preview",
-    "version": "0.1.0"
+    "version": "0.1.1"
   },
   "paths": {
     "/api/google/callback": {"get":{"summary":"Browser-bound one-use OAuth callback; no owner session created","responses":{"200":{"description":"Connected; return to account UI"},"400":{"description":"Authorization rejected without secret details"}}}},
