@@ -5,11 +5,74 @@
     "version": "0.1.0"
   },
   "paths": {
-    "/api/google/callback": {"get":{"summary":"Browser-bound one-use OAuth callback; no owner session created","responses":{"200":{"description":"Connected; return to account UI"},"400":{"description":"Authorization rejected without secret details"}}}},
-    "/api/music/catalog": {"post":{"summary":"Owner-only fixed YouTube Data API video lookup; not audio","responses":{"200":{"description":"Catalog items, audio_verified=false"},"409":{"description":"Capability or provider denied"}}}},
-    "/api/music/audio-probe": {"post":{"summary":"Owner-only anonymous fresh audio probe; no Google cookie import","responses":{"200":{"description":"Verified fresh audio bytes OR structured blocked source result"},"409":{"description":"Invalid ID or busy worker"}}}},
-    "/api/session/logout": {"post":{"summary":"Invalidate this owner browser session","responses":{"200":{"description":"Session removed"},"401":{"description":"Owner required"}}}},
-    "/service/music/catalog": {"post":{"summary":"Typed Music caller token; bound account selected only by broker","responses":{"200":{"description":"Catalog metadata only"},"401":{"description":"Music caller required; owner/MCP credentials do not substitute"},"409":{"description":"No owner binding or provider permission"}}}},
+    "/api/google/callback": {
+      "get": {
+        "summary": "Browser-bound one-use OAuth callback; no owner session created",
+        "responses": {
+          "200": {
+            "description": "Connected; return to account UI"
+          },
+          "400": {
+            "description": "Authorization rejected without secret details"
+          }
+        }
+      }
+    },
+    "/api/music/catalog": {
+      "post": {
+        "summary": "Owner-only fixed YouTube Data API video lookup; not audio",
+        "responses": {
+          "200": {
+            "description": "Catalog items, audio_verified=false"
+          },
+          "409": {
+            "description": "Capability or provider denied"
+          }
+        }
+      }
+    },
+    "/api/music/audio-probe": {
+      "post": {
+        "summary": "Owner-only anonymous fresh audio probe; no Google cookie import",
+        "responses": {
+          "200": {
+            "description": "Verified fresh audio bytes OR structured blocked source result"
+          },
+          "409": {
+            "description": "Invalid ID or busy worker"
+          }
+        }
+      }
+    },
+    "/api/session/logout": {
+      "post": {
+        "summary": "Invalidate this owner browser session",
+        "responses": {
+          "200": {
+            "description": "Session removed"
+          },
+          "401": {
+            "description": "Owner required"
+          }
+        }
+      }
+    },
+    "/service/music/catalog": {
+      "post": {
+        "summary": "Typed Music caller token; bound account selected only by broker",
+        "responses": {
+          "200": {
+            "description": "Catalog metadata only"
+          },
+          "401": {
+            "description": "Music caller required; owner/MCP credentials do not substitute"
+          },
+          "409": {
+            "description": "No owner binding or provider permission"
+          }
+        }
+      }
+    },
     "/api/state": {
       "get": {
         "summary": "/api/state",
@@ -151,6 +214,29 @@
           "401": {
             "description": "Owner authentication required"
           }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "account": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "youtube": {
+                    "type": "boolean"
+                  },
+                  "calendar": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
         }
       }
     },
@@ -166,6 +252,29 @@
           },
           "401": {
             "description": "Owner authentication required"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "account": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "youtube": {
+                    "type": "boolean"
+                  },
+                  "calendar": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
           }
         }
       }
@@ -216,6 +325,418 @@
             "description": "Owner authentication required"
           }
         }
+      }
+    },
+    "/service/calendar/status": {
+      "get": {
+        "summary": "Calendar-only grant; status",
+        "security": [
+          {
+            "WizardGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "See docs/CALENDAR_API.md; no tokens or client secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "client_configured": {
+                      "type": "boolean"
+                    },
+                    "accounts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "account": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "calendar_allowed": {
+                            "type": "boolean"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "reauth_required"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "account",
+                          "email",
+                          "calendar_allowed",
+                          "status"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "setup_url": {
+                      "type": "string",
+                      "enum": [
+                        "/wizard-connectors/"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "client_configured",
+                    "accounts",
+                    "setup_url"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Matching Calendar grant required, including report-only mode"
+          },
+          "409": {
+            "description": "Broker validation, binding or provider refusal"
+          }
+        }
+      }
+    },
+    "/service/calendar/calendars": {
+      "post": {
+        "summary": "Calendar-only grant; calendars",
+        "security": [
+          {
+            "WizardGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "See docs/CALENDAR_API.md; no tokens or client secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "calendars": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "account": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string"
+                          },
+                          "primary": {
+                            "type": "boolean"
+                          },
+                          "access_role": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "account",
+                          "email",
+                          "id",
+                          "name",
+                          "color",
+                          "primary",
+                          "access_role"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "calendars"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Matching Calendar grant required, including report-only mode"
+          },
+          "409": {
+            "description": "Broker validation, binding or provider refusal"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/service/calendar/events": {
+      "post": {
+        "summary": "Calendar-only grant; events",
+        "security": [
+          {
+            "WizardGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "See docs/CALENDAR_API.md; no tokens or client secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "calendar_id": {
+                            "type": "string"
+                          },
+                          "account": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "end": {
+                            "type": "string"
+                          },
+                          "all_day": {
+                            "type": "boolean"
+                          },
+                          "location": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "html_link": {
+                            "type": "string",
+                            "format": "uri"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "calendar_id",
+                          "account",
+                          "title",
+                          "start",
+                          "end",
+                          "all_day",
+                          "location",
+                          "status"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "events",
+                    "truncated"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Matching Calendar grant required, including report-only mode"
+          },
+          "409": {
+            "description": "Broker validation, binding or provider refusal"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "account": {
+                    "type": "string"
+                  },
+                  "calendar_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "time_min": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "time_max": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "account",
+                  "calendar_id",
+                  "time_min",
+                  "time_max"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/google/client": {
+      "post": {
+        "summary": "Owner-only encrypted OAuth client save/replace",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "client_secret": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 512,
+                    "writeOnly": true
+                  },
+                  "redirect_uri": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "client_id",
+                  "client_secret",
+                  "redirect_uri"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Client metadata only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "client_configured": {
+                      "type": "boolean"
+                    },
+                    "client_id": {
+                      "type": "string"
+                    },
+                    "redirect_uri": {
+                      "type": "string"
+                    },
+                    "client_source": {
+                      "type": "string",
+                      "enum": [
+                        "env",
+                        "owner"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "client_configured",
+                    "client_id",
+                    "redirect_uri",
+                    "client_source"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Owner-only client removal; invalidates account credentials and bindings",
+        "responses": {
+          "200": {
+            "description": "Client removed"
+          }
+        }
+      }
+    },
+    "/api/calendar/bind": {
+      "post": {
+        "summary": "Owner explicit per-account Calendar binding toggle",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "account": {
+                    "type": "string"
+                  },
+                  "consent": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "account",
+                  "consent"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Binding updated"
+          },
+          "409": {
+            "description": "Requires active account and Calendar scope"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "WizardGrant": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Wizard-Grant",
+        "description": "SHA-256 key matched to incoming calendar row, always enforced"
       }
     }
   }

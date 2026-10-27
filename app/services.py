@@ -35,7 +35,9 @@ def service(role, broker=None):
     if role=='google':
         b=broker or Broker(dict(os.environ))
         operations={'status':b.status,'start':b.start,'finish':b.finish,'bind':b.bind,'unlink':b.unlink,
-                    'disconnect':b.disconnect,'catalog':b.catalog,'music_catalog':b.music_catalog}
+                    'disconnect':b.disconnect,'catalog':b.catalog,'music_catalog':b.music_catalog,
+                    'save_client':b.save_client,'clear_client':b.clear_client,'calendar_bind':b.calendar_bind,
+                    'calendar_status':b.calendar_status,'calendar_calendars':b.calendar_calendars,'calendar_events':b.calendar_events}
         port,token=8800,os.environ.get('BROKER_TOKEN','')
     elif role=='media':
         # This role has no Google volume, broker token, or credential-bearing env.
