@@ -29,6 +29,10 @@ try{
   browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BINARY,args:['--disable-gpu']});
   const c=await browser.newContext(phone?{viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'}:{viewport:{width:1280,height:960}});
   check('owner session',(await c.request.post(base+'/api/session',{data:{token:'FAKE_OWNER_TOKEN_'.repeat(4)}})).ok());
+  // Clean only synthetic fixture accounts between viewport cases. Account IDs
+  // are opaque/random and sorted by ID, so `.last()` is not “newest”.
+  const previous=await (await c.request.get(base+'/api/state')).json();
+  for(const a of previous.google.accounts)check('remove prior fixture account',(await c.request.post(base+'/api/google/disconnect',{data:{account:a.id}})).ok());
   await c.request.delete(base+'/api/google/client');
   const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));
   await p.goto(base);await p.locator('#google-row').click();
