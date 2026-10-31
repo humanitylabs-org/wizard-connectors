@@ -38,6 +38,8 @@ try{
   await p.goto(base);await p.locator('#google-row').click();
   check('standalone uses dark fallback',await p.locator('html').evaluate(e=>getComputedStyle(e).colorScheme.includes('dark')));
   await p.screenshot({path:path.join(out,'gsetup-'+(phone?'390':'1280')+'-standalone-dark.png'),fullPage:true});
+  await p.goBack();await p.locator('body[data-view="root"]').waitFor();check('standalone browser Back returns app root',true);
+  await p.goBack();check('standalone root browser Back never exits',p.url().startsWith(base));
   await p.goto(base+'/_qa/host');
   const f=p.frameLocator('iframe'),size=phone?'390':'1280';
   await f.locator('#google-row').click();
@@ -84,7 +86,7 @@ try{
    }
    if(step<7)await f.getByRole('button',{name:'Next',exact:true}).click();
   }
-  async function complete(){const link=f.getByRole('link',{name:'Continue to Google'}).last();await link.waitFor();const url=new URL(await link.getAttribute('href'));check('fixed Google authorization endpoint',url.origin==='https://accounts.google.com');const tab=await c.newPage();check('real callback with FAKE signed token',(await tab.goto(base+'/api/google/callback?state='+encodeURIComponent(url.searchParams.get('state'))+'&code=FAKE_CODE')).ok());await tab.close();await f.getByRole('button',{name:'Refresh accounts',exact:true}).click();}
+  async function complete(){const link=f.getByRole('link',{name:'Continue to Google'}).last();await link.waitFor();const url=new URL(await link.getAttribute('href'));check('fixed Google endpoint and incremental grants',url.origin==='https://accounts.google.com'&&url.searchParams.get('include_granted_scopes')==='true');const tab=await c.newPage();check('real callback with FAKE signed token',(await tab.goto(base+'/api/google/callback?state='+encodeURIComponent(url.searchParams.get('state'))+'&code=FAKE_CODE')).ok());await tab.close();await f.getByRole('button',{name:'Refresh accounts',exact:true}).click();}
   await f.getByRole('button',{name:'Connect Google',exact:true}).click();await complete();
   // Existing accounts remain visible after client replacement, so use the new one.
   await f.getByRole('button',{name:'Let Calendar read this account',exact:true}).last().click();await complete();
@@ -96,10 +98,17 @@ try{
   check('Calendar+YouTube incremental consent and binding',a.scopes.includes('https://www.googleapis.com/auth/calendar.readonly')&&a.scopes.includes('https://www.googleapis.com/auth/youtube.readonly')&&state.google.calendar_binding.accounts.includes(a.id));
   await f.getByRole('button',{name:'Connect Google',exact:true}).click();await complete();
   check('multiple Google accounts', (await f.locator('body').evaluate(()=>fetch('./api/state').then(r=>r.json()))).google.accounts.length>=2);
+  const service=await c.request.post(base+'/service/calendar/events',{headers:{'X-Wizard-Grant':'FAKE_BROWSER_CALENDAR_GRANT'},data:{account:a.id,calendar_id:'primary@example.invalid',time_min:'2026-10-01T00:00:00Z',time_max:'2026-11-01T00:00:00Z'}});
+  check('grant-checked Calendar service returns labelled FAKE event',service.ok()&&(await service.json()).events[0].title==='FAKE event');
+  await f.getByRole('button',{name:'Stop Calendar using this account',exact:true}).click();
+  await f.getByRole('button',{name:'Stop Calendar using this account',exact:true}).waitFor({state:'detached'});
+  check('Calendar unbind persists',(await f.locator('body').evaluate(()=>fetch('./api/state').then(r=>r.json()))).google.calendar_binding.accounts.length===0);
   await f.getByRole('button',{name:'Finish setup',exact:true}).click();await f.getByText('Google app: set up ✓',{exact:true}).waitFor();
   check('stepper collapses',await f.locator('.google-progress').count()===0);
   await f.getByRole('button',{name:'Change',exact:true}).click();await f.getByText('6 of 7',{exact:true}).waitFor();
-  await p.evaluate(()=>window.__qaBack());await f.getByText('5 of 7',{exact:true}).waitFor();
+  await f.getByLabel('Client secret',{exact:true}).fill('FAKE_UNSAVED_DRAFT');
+  p.once('dialog',d=>d.accept());await p.evaluate(()=>window.__qaBack());await f.getByText('5 of 7',{exact:true}).waitFor();
+  check('confirmed unsaved draft Back stays in nested setup',true);
   check('Change nested Back goes to previous step',true);
   for(let i=0;i<6;i++)await p.evaluate(()=>window.__qaBack());
   await f.locator('body[data-view="root"]').waitFor();check('root remains inside app',p.url().startsWith(base));
