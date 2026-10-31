@@ -1,6 +1,6 @@
 {
   "name": "Connected accounts",
-  "id": "wizard-connectors",
+  "id": "connected-accounts",
   "wizard_type": "service",
   "available": true,
   "short_desc": "Your Google accounts for Calendar and Music.",
