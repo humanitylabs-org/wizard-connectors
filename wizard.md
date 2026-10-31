@@ -1,6 +1,7 @@
 ---
 wizard: 0.2
-id: wizard-connectors
+id: connected-accounts
+renamed_from: [wizard-connectors]
 name: Connected accounts
 type: external
 category: app

@@ -1,6 +1,6 @@
 {
   "name": "Connected accounts",
-  "id": "wizard-connectors",
+  "id": "connected-accounts",
   "wizard_type": "external",
   "available": true,
   "short_desc": "External: Google readiness and simulated private chat.",
