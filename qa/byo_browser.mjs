@@ -6,7 +6,7 @@ import path from 'node:path';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.PLAYWRIGHT_MODULE);
 const base=process.env.QA_BASE||'http://127.0.0.1:19478',out=process.env.QA_ROOT;
 fs.mkdirSync(out,{recursive:true});
-const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BINARY});
+const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BINARY,args:['--disable-gpu']});
 const checks=[],errors=[];
 const check=(name,ok)=>{if(!ok)throw Error(name);checks.push(name);};
 let revision=0;

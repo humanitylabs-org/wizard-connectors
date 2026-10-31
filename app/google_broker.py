@@ -233,6 +233,7 @@ class Broker:
                 new['calendar_binding']['accounts'] = []
                 self._commit(new)
                 self.pending.clear()
+            self.setup_pending.clear()
             return self.client_status()
 
     def gate(self):

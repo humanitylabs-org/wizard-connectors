@@ -107,6 +107,32 @@ class SetupIntakeTests(unittest.TestCase):
                     'http://localhost@evil.invalid/api/google/setup/intake#'+token):
             with self.assertRaises(script.NeedsOwner):script.intake_target(bad)
 
+    def test_manual_save_or_clear_invalidates_pending_setup(self):
+        token=self.begin()['intake_url'].split('#')[1]
+        self.b.save_client(**self.payload,redirect_uri='https://owner.example/wizard-connectors/api/google/callback')
+        self.assertEqual(self.post(token)[0],403)
+        token=self.begin()['intake_url'].split('#')[1]
+        self.b.clear_client()
+        self.assertEqual(self.post(token)[0],403)
+
+    def test_internal_ingress_full_mcp_capability_deposit_lane(self):
+        import ingress
+        from http.client import HTTPConnection
+        from types import SimpleNamespace
+        target_port=self.web.server_port
+        class Internal(HTTPConnection):
+            def __init__(self,host,port,**kw):super().__init__('127.0.0.1',target_port,**kw)
+        token=self.begin()['intake_url'].split('#')[1]
+        s=ThreadingHTTPServer(('127.0.0.1',0),ingress.Ingress)
+        threading.Thread(target=s.serve_forever,daemon=True).start()
+        old=self.base
+        try:
+            self.base='http://127.0.0.1:'+str(s.server_port)
+            with patch.object(ingress,'http',SimpleNamespace(client=SimpleNamespace(HTTPConnection=Internal))):
+                self.assertEqual(self.post(token,Host='wizard-connectors-calendar:8799')[:2],(200,{'ok':True}))
+            self.assertTrue(self.b.client_status()['client_configured'])
+        finally:self.base=old;s.shutdown();s.server_close()
+
     def test_public_ingress_blocks_intake_even_with_valid_capability(self):
         import ingress
         s=ThreadingHTTPServer(('127.0.0.1',0),ingress.Ingress)
