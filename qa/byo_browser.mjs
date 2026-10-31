@@ -30,7 +30,11 @@ try{
   const c=await browser.newContext(phone?{viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'}:{viewport:{width:1280,height:960}});
   check('owner session',(await c.request.post(base+'/api/session',{data:{token:'FAKE_OWNER_TOKEN_'.repeat(4)}})).ok());
   await c.request.delete(base+'/api/google/client');
-  const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto(base+'/_qa/host');
+  const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));
+  await p.goto(base);await p.locator('#google-row').click();
+  check('standalone uses dark fallback',await p.locator('html').evaluate(e=>getComputedStyle(e).colorScheme.includes('dark')));
+  await p.screenshot({path:path.join(out,'gsetup-'+(phone?'390':'1280')+'-standalone-dark.png'),fullPage:true});
+  await p.goto(base+'/_qa/host');
   const f=p.frameLocator('iframe'),size=phone?'390':'1280';
   await f.locator('#google-row').click();
   check('correct mobile frame width',await f.locator('body').evaluate(()=>innerWidth)===(phone?390:1280));

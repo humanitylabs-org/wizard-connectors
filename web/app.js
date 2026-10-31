@@ -76,7 +76,7 @@ function renderGoogleSteps(g){
  }
  if(googleStep===5){
   append('p','Open Clients → Create client. Choose Web application, name it Wizard, and under Authorized redirect URIs choose Add URI. Paste this exact address:');
-  const l=append('label','Authorized redirect URI','wz-label'),i=element('input',undefined,'wz-input');i.type='url';i.value=redirect();i.oninput=()=>{googleRedirect=i.value;};l.append(i);
+  const l=append('label','Authorized redirect URI','wz-label'),i=element('textarea',undefined,'wz-input google-uri');i.rows=3;i.spellcheck=false;i.value=redirect();i.oninput=()=>{googleRedirect=i.value;};l.append(i);
   button('Copy redirect URI',()=>copyGoogle(i.value,'Redirect URI'));
   append('small','If needed, correct this to your Wizard’s public HTTPS address before copying. Keep the full /api/google/callback ending.');
   googleLink('Open Google Auth clients','/auth/clients');append('p','Click Create in Google. Keep its client details open for the next step.');
