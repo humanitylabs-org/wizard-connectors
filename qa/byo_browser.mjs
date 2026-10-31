@@ -6,7 +6,7 @@ import path from 'node:path';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.PLAYWRIGHT_MODULE);
 const base=process.env.QA_BASE||'http://127.0.0.1:19478',out=process.env.QA_ROOT;
 fs.mkdirSync(out,{recursive:true});
-const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BINARY,args:['--disable-gpu']});
+let browser;
 const checks=[],errors=[];
 const check=(name,ok)=>{if(!ok)throw Error(name);checks.push(name);};
 let revision=0;
@@ -24,6 +24,9 @@ async function shot(p,f,label){
 }
 try{
  for(const phone of [true,false]){
+  // Native macOS Chrome can terminate when its last emulated context closes.
+  // Own a fresh process per viewport rather than reopening a dead browser.
+  browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BINARY,args:['--disable-gpu']});
   const c=await browser.newContext(phone?{viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'}:{viewport:{width:1280,height:960}});
   check('owner session',(await c.request.post(base+'/api/session',{data:{token:'FAKE_OWNER_TOKEN_'.repeat(4)}})).ok());
   await c.request.delete(base+'/api/google/client');
@@ -92,7 +95,7 @@ try{
   check('Change nested Back goes to previous step',true);
   for(let i=0;i<6;i++)await p.evaluate(()=>window.__qaBack());
   await f.locator('body[data-view="root"]').waitFor();check('root remains inside app',p.url().startsWith(base));
-  await c.close();
+  await browser.close();
  }
  check('no browser exceptions',errors.length===0);
  const receipt={provider:'FAKE Google; real UI/ingress/RPC/store',appearance:'mock host with real WizardApp; NOT installed-shell or device proof',passed:checks.length,checks,errors};
