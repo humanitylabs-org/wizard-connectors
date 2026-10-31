@@ -155,6 +155,7 @@ class Broker:
         self.state.setdefault('client', None)
         self.state.setdefault('calendar_binding', {'app':'calendar', 'accounts':[], 'operations':['calendar.list','events.list']})
         self.pending = {}
+        self.setup_pending = {}  # Digest-only, memory-only capabilities; restart invalidates all.
         self.lock = threading.RLock()
         # An installer replacing an env client is a replacement too. Never reuse
         # an old client's still-live access token under a different OAuth app.
@@ -188,6 +189,36 @@ class Broker:
         if not isinstance(client_secret,str) or not 8 <= len(client_secret) <= 512 or any(c.isspace() for c in client_secret): raise Denied('invalid_client_secret')
         validate_redirect(redirect_uri)
         return self._set_client({'client_id':client_id,'client_secret':client_secret,'redirect_uri':redirect_uri})
+
+    def setup_status(self, redirect_uri):
+        validate_redirect(redirect_uri)
+        with self.lock:
+            c = self.client_status()
+            return {'configured': c['client_configured'], 'managed': c['client_source'] == 'env',
+                    'redirect_uri': c['redirect_uri'] or redirect_uri,
+                    'required_apis': ['calendar-json.googleapis.com'],
+                    'required_scopes': sorted(IDENTITY | {CALENDAR})}
+
+    def setup_begin(self, redirect_uri):
+        validate_redirect(redirect_uri)
+        with self.lock:
+            if self.client()[1] == 'env': raise Denied('client_managed_by_environment')
+            if not self.store.cipher: raise Denied('credential_key_required')
+            # One active setup per owner. Reissuing supersedes the previous capability.
+            token = secrets.token_urlsafe(32)
+            self.setup_pending = {hashlib.sha256(token.encode()).hexdigest():
+                                  {'expires': time.time() + 1800, 'redirect_uri': redirect_uri}}
+            return {'token': token, 'expires_in': 1800}
+
+    def setup_deposit(self, token, client_id, client_secret):
+        with self.lock:
+            if not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}', token):
+                raise Denied('invalid_setup_token')
+            key = hashlib.sha256(token.encode()).hexdigest()
+            pending = self.setup_pending.pop(key, None)  # Consume even on malformed credentials/storage failure.
+            if not pending or pending['expires'] <= time.time(): raise Denied('invalid_setup_token')
+            self.save_client(client_id, client_secret, pending['redirect_uri'])
+            return {'ok': True}  # Never echo credentials, including the public ID.
 
     def clear_client(self): return self._set_client(None)
 

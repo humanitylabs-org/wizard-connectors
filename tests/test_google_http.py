@@ -308,7 +308,7 @@ class BrokerHTTPTests(unittest.TestCase):
         h=self.grant();self.assertEqual(self.req('/api/state',owner=False,headers=h)[0],401)
         data={'jsonrpc':'2.0','id':1,'method':'tools/list'}
         tools=self.req('/mcp',data,owner=False,headers={'Authorization':'Bearer '+'m'*40})[1]['result']['tools']
-        self.assertEqual({t['name'] for t in tools},{'connector_status','summary_job_status'})
+        self.assertEqual({t['name'] for t in tools},{'connector_status','summary_job_status','google_app_setup_status','google_app_setup_begin'})
 
     def test_calendar_events_refresh_window_pagination_bound(self):
         aid=self.calendar_connect();self.b.calendar_bind(aid,True);h=self.grant();body=self.event_body(aid)

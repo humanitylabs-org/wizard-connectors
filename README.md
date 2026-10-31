@@ -1,5 +1,7 @@
 # Connected accounts — Google broker and synthetic private chat
 
+Google setup now offers **Let your wizard set this up** or a seven-screen **Set it up myself** flow. The owner's own main Google account owns one app for all their accounts; the wizard needs no Google account. Agent setup uses an authenticated single-use internal intake so the client secret goes directly from the browser-control script to the broker, never to chat/MCP. See [guided setup and script usage](docs/GOOGLE_SETUP.md).
+
 Google account readiness and a real no-tool Tinfoil `glm-5-3` summary of fictional chat. Real YouTube Music remains the selected provider in the existing Music app; this preview does not replace or modify playback.
 
 ## Boundaries

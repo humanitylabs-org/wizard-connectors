@@ -36,6 +36,8 @@ needs: []
 health: /healthz
 ---
 # Connected accounts
+Ask your wizard **Set up my Google app**, or choose **Set it up myself** for seven guided screens. Your own main Google account owns one app for all your accounts; your wizard needs no Google account. See docs/GOOGLE_SETUP.md for the secret-free agent intake and shipped browser script.
+
 Bring your own Google OAuth app in **Your Google app**, then connect each account,
 authorize Calendar read-only scope, and explicitly allow Calendar to use it.
 Music binding is separate; private chat remains synthetic-only.

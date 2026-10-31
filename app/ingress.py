@@ -9,10 +9,16 @@ class Ingress(BaseHTTPRequestHandler):
     def relay(self):
         connection=None
         try:
+            from urllib.parse import unquote, urlsplit
+            intake = unquote(urlsplit(self.path).path).rstrip('/').endswith('/google/setup/intake')
+            if intake and (self.headers.get('Host','').split(':')[0] not in ('wizard-connectors-calendar','localhost','127.0.0.1')
+                or any(k.lower().startswith(('x-forwarded-', 'tailscale-')) or k.lower() in ('forwarded','via','origin','cookie') for k in self.headers)):
+                self.send_error(403); return
             size=int(self.headers.get('Content-Length','0'))
             if not 0<=size<=8192 or not self.path.startswith('/') or self.path.startswith('//'):
                 self.send_error(400);return
             headers={k:v for k,v in self.headers.items() if k.lower() not in HOP}
+            if intake: headers['Host']='wizard-connectors:8799'  # Only the checked internal alias reaches this lane.
             connection=http.client.HTTPConnection('wizard-connectors',8799,timeout=110)
             connection.request(self.command,self.path,body=self.rfile.read(size) if size else None,headers=headers)
             response=connection.getresponse();body=response.read(2*1024*1024+1)

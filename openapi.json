@@ -5,6 +5,15 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/google/setup/intake": {
+      "post": {
+        "summary": "Internal-only, single-use Google app credential deposit (public/proxied ingress denies)",
+        "security": [{"SetupCapability": []}],
+        "description": "Mint via MCP google_app_setup_begin with MCP bearer auth. 30-minute memory-only capability is returned in the intake URL fragment; pass it as Authorization Bearer, never in the HTTP URL. Direct app network or loopback only, no Origin/Cookie/forwarded headers. Token is consumed before credential validation. Fixed redirect URI is bound at minting. No secret or client ID is echoed.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object", "additionalProperties":false, "required":["client_id","client_secret"], "properties":{"client_id":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,200}\\.apps\\.googleusercontent\\.com$"},"client_secret":{"type":"string","minLength":8,"maxLength":512,"writeOnly":true}}}}}},
+        "responses": {"200":{"description":"Only {ok:true}; re-read MCP setup status"},"400":{"description":"Malformed deposit or safe broker validation/storage error; no values echoed"},"403":{"description":"Wrong/expired/used capability or non-internal request"},"503":{"description":"Storage unavailable; obtain a fresh capability before retry"}}
+      }
+    },
     "/api/google/callback": {
       "get": {
         "summary": "Browser-bound one-use OAuth callback; no owner session created",
@@ -730,8 +739,13 @@
       }
     }
   },
+  "x-mcp-tools": {
+    "google_app_setup_status": {"authentication":"existing MCP bearer", "arguments":{}, "returns":["configured","managed","redirect_uri","required_apis","required_scopes"], "privateContent":false},
+    "google_app_setup_begin": {"authentication":"existing MCP bearer", "arguments":{}, "returns":["intake_url","expires_in","redirect_uri"], "description":"256-bit capability only, never Google credentials; 1800 seconds, single-use, reissue supersedes, broker restart invalidates"}
+  },
   "components": {
     "securitySchemes": {
+      "SetupCapability": {"type":"http","scheme":"bearer","description":"Single-use 30-minute internal intake capability from authenticated MCP google_app_setup_begin; NOT an owner, Calendar or MCP bearer token"},
       "WizardGrant": {
         "type": "apiKey",
         "in": "header",

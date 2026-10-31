@@ -156,6 +156,11 @@ class Handler(BaseHTTPRequestHandler):
         is_calendar = path.startswith('/service/calendar/')
         if is_calendar:
             if not calendar_caller(self.headers): return self.send(403, {'error':'calendar_grant_required'})
+        elif path == '/api/google/setup/intake':
+            # Direct internal service/loopback only; ingress rejects public/proxied requests.
+            if (self.headers.get('Host', '').split(':')[0] not in ('wizard-connectors','127.0.0.1','localhost')
+                or any(k.lower().startswith(('x-forwarded-', 'tailscale-')) or k.lower() in ('forwarded','via','origin','cookie') for k in self.headers)):
+                return self.send(403, {'error':'internal_intake_required'})
         elif not self.trusted(): return
         try:
             size = int(self.headers.get("Content-Length", "0"))
@@ -167,6 +172,14 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return self.send(400, {"error":"invalid_request"})
         if is_calendar: return self.calendar_service(path, data)
+        if path == '/api/google/setup/intake':
+            if set(data) != {'client_id','client_secret'}: return self.send(400, {'error':'invalid_request'})
+            try:
+                value = broker.call('setup_deposit', token=self.headers.get('Authorization','').removeprefix('Bearer '), **data)
+                return self.send(200, value)
+            except Denied as e:
+                return self.send(403 if str(e) == 'invalid_setup_token' else 400, {'error': str(e)})
+            except OSError: return self.send(503, {'error':'local_storage_unavailable'})
         if path == "/api/session":
             token = data.get("token")
             if not OWNER or not isinstance(token,str) or not hmac.compare_digest(token, OWNER):
@@ -233,12 +246,23 @@ class Handler(BaseHTTPRequestHandler):
         if method == "initialize":
             result = {"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"wizard-connectors","version":"0.1.0"}}
         elif method == "tools/list":
-            result = {"tools":[{"name":"connector_status","description":"Content-free connector readiness. No private sources or results.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
+            empty = {"type":"object","properties":{},"additionalProperties":False}
+            result = {"tools":[{"name":"connector_status","description":"Content-free connector readiness. No private sources or results.","inputSchema":empty},
+                               {"name":"google_app_setup_status","description":"Google app configured flag, exact redirect URI and required APIs/scopes. No credentials.","inputSchema":empty},
+                               {"name":"google_app_setup_begin","description":"Owner-authorized Google app setup: mint a single-use internal intake capability, valid 30 minutes. No provider secrets. Reissuing invalidates the previous capability.","inputSchema":empty},
                                {"name":"summary_job_status","description":"Content-free status for an owner-issued job handle.","inputSchema":{"type":"object","properties":{"job_id":{"type":"string"}},"required":["job_id"],"additionalProperties":False}}]}
         elif method == "tools/call":
             name, args = params.get("name"), params.get("arguments",{})
             if name == "connector_status" and not args:
                 content = {"synthetic_only":True,"google":google_status()['state'],"private_enabled":jobs.enabled,"real_data_eligible":False}
+            elif name in ('google_app_setup_status', 'google_app_setup_begin') and args == {}:
+                try:
+                    content = broker.call('setup_status', redirect_uri=self.callback_guess())
+                    if name == 'google_app_setup_begin':
+                        intake = broker.call('setup_begin', redirect_uri=content['redirect_uri'])
+                        content = {'intake_url': 'http://wizard-connectors-calendar:8799/api/google/setup/intake#' + intake['token'],
+                                   'expires_in': intake['expires_in'], 'redirect_uri': content['redirect_uri']}
+                except Denied as e: content = {'error': str(e)}
             elif name == "summary_job_status" and isinstance(args,dict) and set(args) == {"job_id"}:
                 try: content = jobs.get(args["job_id"])
                 except (KeyError,TypeError): content = {"error":"not_found"}
