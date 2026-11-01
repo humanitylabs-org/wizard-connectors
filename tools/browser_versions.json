@@ -1,0 +1,8 @@
+{
+  "python": "1.56.0",
+  "node": "1.56.1",
+  "driver": "1.56.1",
+  "chromium_revision": "1194",
+  "chromium_version": "141.0.7390.37",
+  "reason": "PyPI publishes Python Playwright 1.56.0, not 1.56.1. Its upstream v1.56.0 setup.py pins driver_version 1.56.1, the same driver as Node Playwright 1.56.1. Both use Chromium revision 1194. Verify installed package browser metadata before cache reuse; otherwise install Python's matching Chromium inside the durable job."
+}

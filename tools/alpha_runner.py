@@ -46,6 +46,7 @@ def main():
         print(name, 'exit', proc.returncode, flush=True)
         if proc.returncode: raise SystemExit(proc.returncode)
 
+    pins = json.loads((source/'tools/browser_versions.json').read_text())
     uv = ['uv', 'run', '-q', '--python', '3.12', '--managed-python', '--with-requirements', 'requirements.lock']
     run(uv+['python', '-m', 'unittest', 'discover', '-s', 'tests'], 'unit-tests')
     for file in [source/'web/app.js', *sorted((source/'qa').glob('*.cjs'))]:
@@ -61,7 +62,7 @@ def main():
         expected = {screen+'-'+skin+'.png' for screen in ('home-connected', 'google-calendar-on', 'google-agreements', 'google-connected', 'google-error') for skin in ('nebula', 'light')}
         assert expected <= set(receipt['screenshots'])
         assert all((out/'browser'/name).stat().st_size > 0 for name in expected)
-        run(uv+['--with', 'playwright==1.56.1', 'python', 'qa/google_console_fixture.py'], 'console-fixture', 240)
+        run(uv+['--with', 'playwright=='+pins['python'], 'python', 'qa/google_console_fixture.py'], 'console-fixture', 240)
         browser = {'executed': True, 'screenshots': sorted(expected), 'checks': len(receipt['checks']), 'coverage': 'synthetic standalone skins and fake Console; not live shell/Google/physical phone'}
     daemon_arch = subprocess.check_output(docker+['info','--format','{{.Architecture}}'],cwd=source,env=env,text=True).strip()
     if {'x86_64':'amd64','amd64':'amd64','aarch64':'arm64','arm64':'arm64'}.get(daemon_arch) != args.arch:
