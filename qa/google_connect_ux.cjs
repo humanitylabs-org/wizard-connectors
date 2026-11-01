@@ -8,7 +8,7 @@ const checks=[],errors=[],requests=[];let mode='baseline',fixture=null,stateErro
 fs.mkdirSync(out,{recursive:true});
 function check(name,ok,detail){checks.push({name,ok:!!ok,...(detail?{detail}: {})});console.log((ok?'PASS ':'FAIL ')+name,Math.round(performance.now()/1000)+'s');assert(ok,name);}
 function read(name){return fs.readFileSync(path.join(source,'web',name));}
-async function appFrame(page){const loc=page.locator('iframe[src*="/connected-accounts/"]:visible').last();await loc.waitFor({timeout:60000});const fr=await (await loc.elementHandle()).contentFrame();assert(fr,'connected accounts frame');await fr.waitForSelector('#google-row',{timeout:60000});return fr;}
+async function appFrame(page){const end=Date.now()+90000;let last;while(Date.now()<end){try{const loc=page.locator('iframe[src*="/connected-accounts/"]:visible').last();await loc.waitFor({timeout:30000});const fr=await (await loc.elementHandle()).contentFrame();if(fr){await fr.waitForSelector('#google-row',{timeout:15000});await page.waitForTimeout(500);if(!fr.isDetached())return fr;}}catch(e){last=e;}await page.waitForTimeout(500);}/* shell may swap the iframe while opening; retry on detach */throw last||new Error('connected accounts frame');}
 (async()=>{const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 try{
  const ctx=await browser.newContext({...devices['Pixel 5'],viewport:{width:390,height:844},permissions:['clipboard-read','clipboard-write']});
