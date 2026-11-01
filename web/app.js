@@ -22,12 +22,11 @@ async function checkGoogleReturn(){
 }
 window.addEventListener('focus',checkGoogleReturn);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkGoogleReturn();});
-let state, view = 'root', selected = 'garden', activeJob = null, poll = null, generation = 0, result = null, overlay = null;
+let state, view = 'root', overlay = null, calendarPending = false;
 const detail = $('detail');
 function element(tag, text, cls) {const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 function append(tag,text,cls){const e=element(tag,text,cls);detail.append(e);return e;}
 function button(label,action,parent=detail,cls=''){const b=element('button',label,cls);b.type='button';b.onclick=e=>{const task=action(e);if(view==='google'&&task&&typeof task.then==='function'&&b.isConnected){b.disabled=true;b.setAttribute('aria-busy','true');if(b.textContent===label)b.textContent='Working…';task.finally(()=>{if(b.isConnected){b.disabled=false;b.removeAttribute('aria-busy');if(b.textContent==='Working…')b.textContent=label;}});}};parent.append(b);return b;}
-function errorText(code){return ({private_route_disabled:'Private processing is disabled. No model was called.',private_route_not_configured:'The private route is not configured. No other model was tried.',private_provider_unavailable:'Tinfoil/glm-5-3 was unavailable or timed out. No fallback model was tried.',attestation_failed:'Private-route attestation failed. Summary blocked.',worker_busy:'A summary is still running. Wait or cancel it.',incomplete_output:'The private model returned an incomplete summary. Try again.',invalid_output:'The private model returned no usable summary.',tool_output_rejected:'The private model requested a tool. The output was rejected; no tool ran.',stale_delivery:'The request changed before delivery. This result was discarded.'})[code]||'This operation could not complete ('+code+').';}
 async function api(path, data){const r=await fetch('api/'+path,{method:data===undefined?'GET':'POST',headers:data===undefined?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),credentials:'same-origin',cache:'no-store'});const d=await r.json();if(!r.ok){const e=new Error(d.error||'request_failed');e.data=d;throw e;}return d;}
 function closeDialog(){if($('dialog').open)$('dialog').close();overlay?.release();overlay=null;}
 function dialog(title,text){$('dialog-title').textContent=title;$('dialog-text').textContent=text;$('dialog').showModal();overlay=WizardApp.back.push(()=>{closeDialog();return true;});}
@@ -36,14 +35,18 @@ const outsideDialog=e=>{const r=$('dialog').getBoundingClientRect();return e.cli
 $('dialog').addEventListener('pointerdown',e=>{dialogOutsideDown=e.target===$('dialog')&&outsideDialog(e);});
 $('dialog').addEventListener('click',e=>{if(e.target===$('dialog')&&dialogOutsideDown&&outsideDialog(e))closeDialog();dialogOutsideDown=false;});
 $('dialog-close').onclick=closeDialog;$('dialog').addEventListener('cancel',e=>{e.preventDefault();closeDialog();});
-async function stop(){generation++;clearTimeout(poll);if(activeJob){const id=activeJob;activeJob=null;try{await api('cancel/'+id,{});}catch{}}}
 function navigate(next){if(view==='google'&&next!=='google'){if(clientHold){if(!confirm('Discard unsaved Google app configuration?'))return;discardClientDraft();}cancelGoogleAuth();}view=next;document.body.dataset.view=view;render();}
-function back(){if(view==='google'&&googleAuth){cancelGoogleAuth();render();return true;}if(view==='google'&&googleSetup){if(clientHold){if(!confirm('Discard unsaved Google app configuration?'))return true;discardClientDraft();}if(googleSetup==='manual'&&googleStep>1)googleStep--;else googleSetup=null;render();return true;}if(view==='summary'){navigate('chat');return true;}if(view!=='root'){stop();navigate('root');return true;}return false;}
-function renderRootGoogle(){const g=state.google,n=g.accounts.length;$('google-row').textContent=!g.client_configured?'Set up Google':n?'Manage Google accounts':'Connect your Google account';$('google-summary').textContent=n?n+' Google '+(n===1?'account connected':'accounts connected'):g.client_configured?'See your Google calendars in Wizard. Connect an account to get started.':'Set up once to connect your Google accounts and calendars.';$('google-manage').hidden=!g.client_configured||n>0;}
+function back(){if(view==='google'&&googleAuth){cancelGoogleAuth();render();return true;}if(view==='google'&&googleSetup){if(clientHold){if(!confirm('Discard unsaved Google app configuration?'))return true;discardClientDraft();}if(googleSetup==='manual'&&googleStep>1)googleStep--;else googleSetup=null;render();return true;}if(view!=='root'){navigate('root');return true;}return false;}
+function googleAccountStatus(a){return ['active','connected'].includes(a.status)?'Connected':a.status==='reauth_required'?'Sign in again':'Check connection';}
+function renderRootGoogle(){
+ const g=state.google,n=g.accounts.length,calendarOn=(g.calendar_binding?.accounts||[]).some(id=>g.accounts.some(a=>a.id===id));
+ const account=n===1?(g.accounts[0].email||'1 account'):n+' accounts';
+ $('google-summary').textContent=!g.client_configured?'Google app not set up':n?account+' · Calendar '+(calendarOn?'on':'off'):'Not connected';
+}
 async function refresh(){state=await api('state');$('unlock').hidden=true;$('workspace').hidden=false;renderRootGoogle();render();}
 function render(){detail.replaceChildren();document.body.dataset.view=view;if(!state)return;renderRootGoogle();if(view==='root')return;
-button('← Back',back);if(view==='google')return renderGoogle();if(view==='summary')return renderSummary();renderChat();}
-async function accountAction(path,data){try{await api(path,data);await refresh();}catch(e){dialog('Account action unavailable',errorText(e.message));}}
+button('← Back',back);if(view==='google')return renderGoogle();}
+async function accountAction(path,data){try{await api(path,data);await refresh();}catch(e){dialog('Could not update account','Try again in a moment. If this keeps happening, sign in again.');}}
 function googleError(code){return ({sign_in_timeout:'This sign-in link is more than a day old. Try again to open a fresh Google sign-in window.',authorization_busy:'There are several unfinished sign-in attempts. Wait a few minutes, then try again.',service_unavailable:'Google connections are temporarily unavailable. Try again in a moment.',google_disabled:'Google connections are turned off. Ask your wizard to enable them, then try again.',google_configuration_required:'Your Google app needs setting up before you can connect an account.',broker_unavailable:'Google connections are temporarily unavailable. Check again in a moment.',provider_unavailable:'Google did not respond. Try again in a moment.',owner_auth_required:'Your owner session has expired. Close and reopen Connected accounts, then try again.',invalid_authorization_url:'Google did not return a safe sign-in link. Try again; if it keeps happening, ask your wizard to check Google setup.',local_storage_unavailable:'Your Wizard could not save the sign-in request. Ask your wizard to check its storage.'})[code]||'Could not prepare Google sign-in. Try again; if it keeps happening, ask your wizard to check Google setup.';}
 async function authorize(account=null,youtube=false,calendar=true){
  if(googleAuth?.status==='pending')return;
@@ -128,7 +131,7 @@ function renderGoogleSteps(g){
   googleLink('Open Google Auth clients','/auth/clients');append('p','Click Create in Google. Keep its client details open for the next step.');
  }
  if(googleStep===6){
-  append('p','Paste the Client ID and Client secret from Google here — not into chat. They are saved encrypted by the Google broker.');
+  append('p','Paste the Client ID and Client secret from Google here — not into chat. They are saved encrypted on your Wizard server.');
   const form=append('form',undefined,'wz-sec');
   function field(label,type,max){const l=element('label',label,'wz-label'),i=element('input',undefined,'wz-input');i.type=type;i.required=true;i.autocomplete='off';i.maxLength=max;l.append(i);form.append(l);return i;}
   const id=field('Client ID','text',230);id.value=googleDraft.id||g.client_id||'';id.pattern='[A-Za-z0-9_\\-]{1,200}\\.apps\\.googleusercontent\\.com';
@@ -138,7 +141,7 @@ function renderGoogleSteps(g){
   for(const i of [id,secret])i.oninput=()=>{googleDraft={id:id.value,secret:secret.value};clientHold??=window.WizardApp?.update?.hold?.('Unsaved Google app configuration')||{release(){}};validate();};validate();
   form.onsubmit=async e=>{e.preventDefault();save.disabled=true;save.textContent='Saving…';try{await api('google/client',{client_id:id.value,client_secret:secret.value,redirect_uri:redirect()});secret.value='';discardClientDraft();googleChecks.add(6);state=await api('state');googleStep=7;render();}catch(err){save.textContent='Save Google app';const msg=err.message==='google_client_environment_managed'?'Your installer manages this Google app; ask your wizard to change it.':'Check both values and try again. The secret was not shown or sent to chat.';dialog('Could not save Google app',msg);validate();}};
   if(g.client_source==='env')append('p','Managed by your installer. Ask them to change the environment settings.');
-  if(g.client_configured&&g.client_source!=='env')button('Remove Google app',async()=>{if(!confirm('Remove the app credentials? All accounts will need reauthentication and new service consent.'))return;try{const r=await fetch('api/google/client',{method:'DELETE',credentials:'same-origin'});if(!r.ok)throw new Error('remove_failed');discardClientDraft();googleChecks.delete(6);googleSetup=null;await refresh();}catch(e){dialog('Could not remove Google app','Ask your wizard to check the saved app settings, then try again.');}});
+  if(g.client_configured&&g.client_source!=='env')button('Remove Google app',async()=>{if(!confirm('Remove this Google app? You will need to sign in to each account again and choose which apps can use it.'))return;try{const r=await fetch('api/google/client',{method:'DELETE',credentials:'same-origin'});if(!r.ok)throw new Error('remove_failed');discardClientDraft();googleChecks.delete(6);googleSetup=null;await refresh();}catch(e){dialog('Could not remove Google app','Ask your wizard to check the saved app settings, then try again.');}});
   return;
  }
  if(googleStep===7){append('p','Your Google app is saved. You can now connect accounts and choose their permissions.');button('Go to accounts',()=>{googleSetup=null;render();},detail,'primary');return;}
@@ -151,53 +154,72 @@ function renderGoogle(){
  if(googleAuth)return renderGoogleAuthorization();
  if(googleSetup||!g.client_configured)return renderGoogleApp(g);
  append('h2','Google');
- append('p','Connect your accounts, then choose what Calendar and Music can use.','google-intro');
- const appCard=append('section',undefined,'wz-sec google-app-card');
- const appText=element('div');appText.append(element('h3','Your Google app'),element('p','Set up ✓ — created in your Google account. You only do this once.'));appCard.append(appText);
- button('Change',()=>{googleSetup='manual';googleStep=6;render();},appCard,'text-button');
+ append('p','Choose which apps can use each Google account.','google-intro');
  renderGoogleAccounts(g);
- const tech=disclosure('Connection details');
- if(g.client_source==='env')tech.append(element('small','Managed by your installer. Ask your wizard to change it.'));
- for(const [label,value] of [['Client ID',g.client_id],['Redirect URI',g.redirect_uri||g.suggested_redirect_uri]])if(value){tech.append(element('strong',label),element('p',value,'google-technical'));}
- append('small','Your sign-in details stay on your own Wizard server, not in chat. You can disconnect an account and remove its Google permissions at any time.','google-privacy');
+ const appRow=append('section',undefined,'google-app-row');
+ appRow.append(element('span','Google app · Set up'));
+ button('Change',()=>{googleSetup='manual';googleStep=6;render();},appRow,'text-button');
+ append('small','Your sign-in details stay on your own Wizard server, not in chat.','google-privacy');
  const privacy=append('a','Privacy','google-link');privacy.href='privacy';privacy.target='_blank';privacy.rel='noopener noreferrer';
 }
-function renderGoogleAccounts(g){
- const intro=append('section',undefined,'wz-sec google-connect');
- intro.append(element('h3','Your Google accounts'));
- if(!g.accounts.length)intro.append(element('p','Connect any Google account to see its calendar in Wizard. You can add as many as you like.'));
- // Connected accounts come first; "Add another account" sits under the list.
- for(const a of g.accounts){
-  const card=element('article',undefined,'google-account');intro.append(card);
-  card.append(element('h3',a.email||'Google account'));
-  card.append(element('p',a.status==='connected'?'Connected':a.status==='reauth_required'?'Sign in again to restore access':'Account needs attention','google-help'));
-  const calendarScope=a.scopes.includes('https://www.googleapis.com/auth/calendar.readonly');
-  const allowed=(g.calendar_binding?.accounts||[]).includes(a.id);
-  card.append(element('p',allowed?'Calendar can use this account.':calendarScope?'Google gave read-only calendar access. Turn it on to see this account’s events in Calendar.':'Calendar does not have access to this account.'));
-  if(!calendarScope)button('Show this account’s calendar in Calendar',()=>authorize(a.id,false,true),card,'primary');
-  else button(allowed?'Stop showing this account in Calendar':'Show this account’s calendar in Calendar',()=>{if(!allowed&&!confirm('Show this account’s calendars and events in the Calendar app?'))return;return accountAction('calendar/bind',{account:a.id,consent:!allowed});},card,allowed?'':'primary');
-  const options=disclosure('Account options and permissions',card);
-  button('Reconnect this account',()=>authorize(a.id,a.scopes.includes('https://www.googleapis.com/auth/youtube.readonly')),options);
-  if(!a.scopes.includes('https://www.googleapis.com/auth/youtube.readonly'))button('Authorize YouTube catalog (read only)',()=>authorize(a.id,true),options);
-  else button('Use this Google account for Music catalog',()=>accountAction('music/bind',{account:a.id,consent:true}),options);
-  button('Disconnect Google account',()=>{if(confirm('Disconnect this account and unlink dependent Music and Calendar access? Google will be asked to revoke this app’s grant.'))return accountAction('google/disconnect',{account:a.id});},options);
-  const permissions=disclosure('Technical permission details',options);
-  permissions.append(element('p',a.offline?'Offline refresh authorized':'Session access only'),element('p',a.scopes.join(', '),'google-technical'));
- }
- const actions=element('div',undefined,'actions');intro.append(actions);
- const connect=button(g.accounts.length?'Add another account':'Connect a Google account',()=>authorize(),actions,g.accounts.length?'':'primary');
- connect.disabled=!!g.blocker;
- button('Check accounts',async()=>{try{await refresh();}catch{dialog('Could not check accounts','Try again in a moment. Your connected accounts have not been changed.');}},actions,'text-button');
- if(g.blocker)intro.append(element('p',googleError(g.blocker),'google-status'));
- const music=disclosure('Other uses');
- music.append(element('h3','YouTube Music catalog'),element('span',g.music.state==='bound'?'Music account selected':'No Music account selected','badge'),element('p','Read-only catalog access does not authorize audio playback or change your existing Music source. No shared browser cookies are used.'));
- if(g.bindings.length){button('Unlink Music catalog',()=>accountAction('music/unlink',{}),music);const label=element('label','YouTube video ID','wz-label'),input=element('input',undefined,'wz-input');input.maxLength=11;input.placeholder='11-character video ID';label.append(input);music.append(label);button('Look up catalog item',async()=>{try{const r=await api('music/catalog',{account:g.bindings[0].account,video_id:input.value});dialog('Catalog metadata only',r.items.map(i=>i.title).join('\n')||'No catalog item returned. This is not proof of playback.');}catch(e){dialog('Catalog unavailable',errorText(e.message));}},music);}
- const open=element('a','Open Music','google-link');open.href='/wizard-music/';open.target='_top';music.append(open);
- if(g.provider_revocation==='failed_manual_revocation_required'||g.provider_revocation==='pending')append('p','Local access removed; provider revocation is not confirmed. Remove this app in your Google account permissions.');
+function googleUseRow(parent,name){
+ const row=element('div',undefined,'google-use-row');row.append(element('span',name,'google-use-name'));parent.append(row);return row;
 }
-function renderChat(){append('h2','Simulated chat');append('span','Fictional · contains private data','badge');const label=append('label','Conversation');const select=element('select');for(const t of state.threads){const o=element('option',t.title+' · '+t.count+' messages');o.value=t.id;select.append(o);}select.value=selected;select.disabled=!!activeJob;select.onchange=()=>{selected=select.value;result=null;render();};label.append(select);const messages=append('div');const captured=selected;api('conversations/'+selected).then(p=>{if(view!=='chat'||selected!==captured)return;for(const m of p.messages){const box=element('article',undefined,'message');box.append(element('strong',m.sender+' · '+m.id),element('time',m.at),element('p',m.text));messages.append(box);}}).catch(()=>messages.textContent='Could not load fictional conversation.');append('p','Summary route: tinfoil · glm-5-3. No tools. No fallback. Results remain in this app for 15 minutes and are discarded on restart.');append('small','Synthetic preview: human-view authentication is implemented, but a host administrator can bypass it. No real chat is connected.');const actions=append('div',undefined,'actions');const summarize=button(activeJob?'Summarizing on tinfoil/glm-5-3…':'Summarize privately',start,actions,'primary');summarize.disabled=!!activeJob||!state.private_route.configured||!state.private_route.enabled;if(activeJob){append('progress');button('Cancel summary',async()=>{await stop();render();},actions);}else{button(state.private_route.enabled?'Disable private processing':'Enable private processing',async()=>{await stop();try{await api('policy',{enabled:!state.private_route.enabled});result=null;await refresh();}catch(e){dialog('Could not change policy',errorText(e.message));}},actions);}if(!state.private_route.configured)append('p','Private route is not configured. Summaries are off.');if(!state.private_route.enabled)append('p','Private processing disabled. Summaries block without calling any model.');}
-async function start(){const gen=++generation;try{const j=await api('summarize',{thread:selected,request_id:crypto.randomUUID()});if(gen!==generation){await api('cancel/'+j.id,{});return;}activeJob=j.id;render();const check=async()=>{if(gen!==generation)return;try{const status=await api('jobs/'+j.id);if(gen!==generation)return;if(status.status==='complete'){result=await api('results/'+j.id);if(gen!==generation)return;activeJob=null;navigate('summary');}else if(['blocked','cancelled','quarantined','expired'].includes(status.status)){activeJob=null;render();dialog('Private summary unavailable',errorText(status.reason||status.status));}else{poll=setTimeout(check,1000);}}catch(e){if(gen!==generation)return;await stop();render();dialog('Could not read summary',errorText(e.message));}};poll=setTimeout(check,500);}catch(e){activeJob=null;render();dialog('Private summary unavailable',errorText(e.message));}}
-function renderSummary(){append('h2','Private summary');append('span','Human view · not returned by MCP','badge');append('pre',result?.text||'This result is no longer available.');append('small','tinfoil · glm-5-3 · simulated data · untrusted plain text');append('small','Source references: '+(result?.source_ids||[]).join(', '));const actions=append('div',undefined,'actions');button('Done',()=>navigate('chat'),actions);button('Discard',async()=>{if(result?.id)await api('cancel/'+result.id,{});result=null;navigate('chat');},actions);}
-$('google-row').onclick=()=>{stop();googleSetup=null;navigate('google');if(state.google.client_configured&&!state.google.accounts.length)authorize();};$('google-manage').onclick=()=>{stop();googleSetup=null;navigate('google');};$('chat-row').onclick=()=>navigate('chat');
+async function toggleCalendar(control,a,allowed){
+ if(calendarPending)return;
+ if(!allowed&&!confirm('Show this account’s calendars and events in the Calendar app?'))return;
+ // Paint the owner's choice and pending state in this click, before network I/O.
+ calendarPending=true;document.querySelectorAll('.google-toggle').forEach(b=>{b.disabled=true;});control.setAttribute('aria-checked',String(!allowed));control.setAttribute('aria-busy','true');control.disabled=true;
+ try{await api('calendar/bind',{account:a.id,consent:!allowed});calendarPending=false;await refresh();}
+ catch{control.setAttribute('aria-checked',String(allowed));dialog('Could not update Calendar','Check accounts before trying again. Your choice could not be confirmed.');}
+ finally{calendarPending=false;document.querySelectorAll('.google-toggle').forEach(b=>{b.disabled=false;});control.disabled=false;control.removeAttribute('aria-busy');}
+}
+function renderGoogleAccounts(g){
+ const list=append('section',undefined,'google-connect');list.setAttribute('aria-label','Google accounts');
+ if(!g.accounts.length)list.append(element('p','Connect a Google account to get started.'));
+ for(const a of g.accounts){
+  const card=element('article',undefined,'google-account');list.append(card);
+  const head=element('div',undefined,'google-account-head');card.append(head);
+  head.append(element('h3',a.email||'Google account'));
+  const status=googleAccountStatus(a),pill=element('span',status,'google-status-pill');pill.dataset.healthy=String(status==='Connected');head.append(pill);
+  if(a.status==='reauth_required')card.append(element('p','Sign in again to let these apps update.','google-help'));
+  card.append(element('h4','Used by','google-used-label'));
+  const calendarScope=a.scopes.includes('https://www.googleapis.com/auth/calendar.readonly');
+  const youtubeScope=a.scopes.includes('https://www.googleapis.com/auth/youtube.readonly');
+  const allowed=(g.calendar_binding?.accounts||[]).includes(a.id);
+  const calendar=googleUseRow(card,'Calendar');
+  if(!calendarScope)button('Allow',()=>authorize(a.id,false,true),calendar).setAttribute('aria-label','Allow Calendar');
+  else{
+   const toggle=element('button',undefined,'google-toggle');toggle.type='button';toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Calendar for '+(a.email||'Google account'));toggle.setAttribute('aria-checked',String(allowed));toggle.disabled=calendarPending;
+   toggle.append(element('span',undefined,'google-toggle-track'));toggle.onclick=()=>toggleCalendar(toggle,a,allowed);calendar.append(toggle);
+  }
+  const musicBound=g.bindings.some(b=>b.account===a.id);
+  if(youtubeScope){
+   const music=googleUseRow(card,'Music');
+   if(musicBound)music.append(element('small','Selected'));
+   else button('Use account',()=>accountAction('music/bind',{account:a.id,consent:true}),music);
+  }
+  const more=disclosure('More',card);
+  button('Sign in again',()=>authorize(a.id,youtubeScope),more);
+  button('Disconnect',()=>{if(confirm('Disconnect this Google account? Calendar and Music will stop using it, and Google will be asked to remove this app’s access.'))return accountAction('google/disconnect',{account:a.id});},more,'text-button');
+  const music=disclosure('Music song details',more);
+  music.append(element('p','Read song details from YouTube. This does not play music or change your Music source.'));
+  if(!youtubeScope)button('Allow Music song details',()=>authorize(a.id,true),music);
+  if(musicBound){
+   button('Stop using this account for Music',()=>accountAction('music/unlink',{}),music);
+   const label=element('label','YouTube video ID','wz-label'),input=element('input',undefined,'wz-input');input.maxLength=11;input.placeholder='11-character video ID';label.append(input);music.append(label);
+   button('Look up song details',async()=>{try{const r=await api('music/catalog',{account:a.id,video_id:input.value});dialog('Song details',r.items.map(i=>i.title).join('\n')||'No song details found.');}catch{dialog('Song details unavailable','Try again in a moment.');}},music);
+  }
+  const open=element('a','Open Music','google-link');open.href='/wizard-music/';open.target='_top';music.append(open);
+  const permissions=disclosure('Permission details',more);
+  permissions.append(element('p',a.offline?'Stays signed in between visits':'Signed in for this visit only'),element('p',a.scopes.join(', '),'google-technical'));
+ }
+ const actions=element('div',undefined,'actions');list.append(actions);
+ const connect=button(g.accounts.length?'Add another Google account':'Connect a Google account',()=>authorize(),actions,g.accounts.length?'':'primary');connect.disabled=!!g.blocker;
+ button('Check accounts',async()=>{try{await refresh();}catch{dialog('Could not check accounts','Try again in a moment. Your connected accounts have not been changed.');}},actions,'text-button');
+ if(g.blocker)list.append(element('p',googleError(g.blocker),'google-status'));
+ if(g.provider_revocation==='failed_manual_revocation_required'||g.provider_revocation==='pending')append('p','This account was disconnected from Wizard. Google has not confirmed that access was removed. You can remove this app in your Google account permissions.');
+}
+$('google-row').onclick=()=>{googleSetup=null;navigate('google');if(state.google.client_configured&&!state.google.accounts.length)authorize();};
 $('unlock').onsubmit=async e=>{e.preventDefault();try{await api('session',{token:$('owner-token').value});$('owner-token').value='';await refresh();}catch{dialog('Could not unlock','Use the app installer’s owner token, not a Google password.');}};
 if(!window.WizardApp){$('system-error').hidden=false;$('system-error').textContent='Shared WizardApp core is unavailable. Configure the approved shell resource before using this preview.';$('workspace').hidden=true;}else{WizardApp.ready({name:'Connected accounts',version:'0.1.0'});WizardApp.back.register({canGoBack:()=>view!=='root',back});refresh().catch(e=>{if(e.message==='owner_auth_required'){$('workspace').hidden=true;$('unlock').hidden=false;}else{$('system-error').hidden=false;$('system-error').textContent='Could not load app state.';}});}

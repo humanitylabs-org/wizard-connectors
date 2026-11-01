@@ -1,3 +1,21 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connected accounts</title><script src="boot.js"></script><link rel="stylesheet" href="wizard-ui.css"><link rel="stylesheet" href="styles.css"><script defer src="/wizard-os-home/core/app-client.js"></script><script defer src="app.js"></script></head>
-<body><main class="wz-app"><header class="wz-head"><h1>Connected accounts</h1></header><p id="system-error" role="alert" hidden></p><form id="unlock" hidden><label>Owner access token <input id="owner-token" type="password" autocomplete="off" required></label><button>Unlock preview</button><small>Provided by the local installer. Never paste Google credentials here.</small></form><div id="workspace"><nav id="navigation" aria-label="Connections"><h2>Your accounts, in Wizard</h2><p class="notice">Choose what your apps can use. You can change your mind at any time.</p><section class="wz-sec google-root"><h3>Google</h3><p id="google-summary">Checking your Google connection…</p><button id="google-row" class="primary" type="button">Google accounts</button><button id="google-manage" class="text-button" type="button" hidden>Manage Google settings</button></section><section class="wz-sec practice-root"><p class="wz-sec-h">Try it out</p><button id="chat-row" class="wz-row row" type="button"><span class="wz-main"><b>Practice a private summary</b><small>Try fictional messages. No real chat account is connected.</small></span><span aria-hidden="true">→</span></button></section></nav><section id="detail" aria-live="polite"></section></div></main><dialog id="dialog"><h2 id="dialog-title"></h2><p id="dialog-text"></p><button id="dialog-close">OK</button></dialog></body></html>
+<body>
+<main class="wz-app">
+  <header class="wz-head"><h1>Connected accounts</h1></header>
+  <p id="system-error" role="alert" hidden></p>
+  <form id="unlock" hidden><label>Owner access token <input id="owner-token" type="password" autocomplete="off" required></label><button>Unlock preview</button><small>Provided by the local installer. Never paste Google credentials here.</small></form>
+  <div id="workspace">
+    <nav id="navigation" aria-label="Connections">
+      <p class="notice">Choose which accounts your apps can use.</p>
+      <button id="google-row" class="wz-row provider-card" type="button">
+        <span class="wz-tile provider-mark" aria-hidden="true">G</span>
+        <span class="wz-main"><b>Google</b><small id="google-summary">Checking your Google connection…</small></span>
+        <span class="provider-chevron" aria-hidden="true">›</span>
+      </button>
+    </nav>
+    <section id="detail" aria-live="polite"></section>
+  </div>
+</main>
+<dialog id="dialog"><h2 id="dialog-title"></h2><p id="dialog-text"></p><button id="dialog-close">OK</button></dialog>
+</body></html>

@@ -1,5 +1,8 @@
 """Google connect UX contract: real HTTP and broker, fake provider only."""
 import unittest
+import shutil
+import subprocess
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 import test_google_http as fixtures
 
@@ -35,7 +38,12 @@ class GoogleConnectUXTests(unittest.TestCase):
         self.assertEqual(headers.get_content_type(), 'text/html')
         self.assertIn('Google connected', page)
         self.assertIn('../../wizard-ui.css', page)
-        self.assertIn('../../google-callback.js', page)
+        self.assertNotIn('google-callback.js', page)
+        self.assertNotIn('<button', page)
+        self.assertNotIn('window.close', page)
+        self.assertNotIn('<a ', page)
+        self.assertIn('Go back to the Wizard app to finish. You can close this tab.', page)
+        self.assertNotIn('Music playback', page)
         for value in (p['state'], p['nonce'], 'FAKE_CODE', 'FAKE_ACCESS_SECRET', 'FAKE_REFRESH_SECRET'):
             self.assertNotIn(value, page)
         self.assertIn('Max-Age=0', headers['Set-Cookie'])
@@ -47,6 +55,12 @@ class GoogleConnectUXTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn('sign-in wasn’t completed', page)
         self.assertIn('../../styles.css', page)
+        self.assertIn(self.ui.CALLBACK_REASONS['consent_denied'], page)
+        self.assertNotIn('{{REASON}}', page)
+        self.assertIn('Go back to the Wizard app and tap Connect again.', page)
+        self.assertNotIn('<a ', page)
+        self.assertNotIn('<button', page)
+        self.assertIn('{{REASON}}', (Path(__file__).resolve().parents[1] / 'web/google-error.html').read_text())
         self.assertNotIn(p['state'], page)
         self.assertIsNone(headers.get('Set-Cookie'))  # binding kept for other open sign-in windows
         self.assertEqual(self.finish(p)[0], 400)
@@ -60,6 +74,26 @@ class GoogleConnectUXTests(unittest.TestCase):
         self.assertIn('server administrator remains trusted', page)
         self.assertEqual(self.req('/api/state', owner=False)[0], 401)
         self.assertEqual(self.req('/privacy', owner=False, headers={'Host': 'evil.invalid'})[0], 403)
+
+
+class GoogleWebUIContractTests(unittest.TestCase):
+    def test_home_has_one_provider_card_and_no_practice_entry(self):
+        root = Path(__file__).resolve().parents[1]
+        home = (root / 'web/index.html').read_text()
+        app = (root / 'web/app.js').read_text()
+        self.assertEqual(home.count('id="google-row"'), 1)
+        for removed in ('Practice a private summary', 'Try it out', 'chat-row', 'google-manage'):
+            self.assertNotIn(removed, home)
+        self.assertNotIn('function renderChat', app)
+        self.assertNotIn('function renderSummary', app)
+
+    @unittest.skipUnless(shutil.which('node'), 'Node DOM contracts run separately on the forum host')
+    def test_rendered_active_status_and_calendar_switch_contract(self):
+        root = Path(__file__).resolve().parents[1]
+        result = subprocess.run(['node', 'qa/google_account_ui_test.cjs'], cwd=root,
+                                text=True, capture_output=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('PASS active/connected status', result.stdout)
 
 
 if __name__ == '__main__':
