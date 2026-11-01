@@ -33,8 +33,20 @@ class SetupIntakeTests(unittest.TestCase):
 
     def begin(self):
         self.owner_client()
+        from google_agreements import IDS, VERSION
+        self.assertEqual(self.req('/api/google/agreements',{'agreements':sorted(IDS),'version':VERSION,'country':'GB'})[0],200)
         data = self.mcp('google_app_setup_begin')[1]
         return json.loads(data['result']['content'][0]['text'])
+
+    def test_begin_requires_owner_recorded_current_agreements_and_changes_invalidate(self):
+        from google_agreements import IDS, VERSION
+        self.owner_client()
+        self.assertIn('google_agreements_required',json.dumps(self.mcp('google_app_setup_begin')[1]))
+        token=self.begin()['intake_url'].split('#')[1]
+        self.assertEqual(self.req('/api/google/agreements',{'agreements':sorted(IDS),'version':VERSION,'country':'US'})[0],200)
+        self.assertEqual(self.post(token)[0],403)
+        self.b.state['agreements']['version']='google-stale'
+        self.assertIn('google_agreements_required',json.dumps(self.mcp('google_app_setup_begin')[1]))
 
     def post(self, token, data=None, **kw):
         return self.req('/api/google/setup/intake', self.payload if data is None else data, owner=False,

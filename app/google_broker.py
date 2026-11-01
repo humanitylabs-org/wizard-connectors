@@ -211,6 +211,7 @@ class Broker:
             new['agreements'] = {'agreements': sorted(IDS), 'version': VERSION, 'country': country,
                                  'accepted_at': datetime.now().astimezone().isoformat()}
             self._commit(new)
+            self.setup_pending.clear()  # Country/acceptance changes invalidate in-flight delegated setup.
             return self.agreement_status()
 
     def setup_status(self, redirect_uri):
@@ -227,6 +228,12 @@ class Broker:
         with self.lock:
             if self.client()[1] == 'env': raise Denied('client_managed_by_environment')
             if not self.store.cipher: raise Denied('credential_key_required')
+            saved = self.state.get('agreements') or {}
+            if (saved.get('version') != agreements.VERSION
+                    or set(saved.get('agreements', [])) != agreements.IDS
+                    or saved.get('country') not in agreements.COUNTRIES
+                    or not saved.get('accepted_at')):
+                raise Denied('google_agreements_required')
             # One active setup per owner. Reissuing supersedes the previous capability.
             token = secrets.token_urlsafe(32)
             self.setup_pending = {hashlib.sha256(token.encode()).hexdigest():

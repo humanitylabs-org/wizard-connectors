@@ -2,10 +2,11 @@
 """Owner Google Cloud setup in a fresh disposable Human Handoff profile.
 The owner types password/2FA during takeover with all inspection paused. The model
 receives allowlisted status codes only. Persistent/shared CDP is refused by default.
-Every exit attempts Google sign-out, stops the handoff, and verifies stopped status
-and profile removal. Unknown UI fails closed; never dump a page or exception.
+Terminal exits attempt Google sign-out and verify handoff/profile removal.
+Owner sign-in/verification pauses under the original TTL. Unknown UI fails closed.
 """
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -68,7 +69,7 @@ class NeedsOwner(Exception):
 
 class HandoffSession:
     """Read only the selected local handoff's metadata; never its browser data."""
-    def __init__(self, *, allow_persistent=False):
+    def __init__(self):
         self.sid = os.environ.get('HANDOFF_SESSION_ID', '')
         self.endpoint = os.environ.get('HANDOFF_CDP_URL', '')
         if not re.fullmatch(r'hh-[0-9]{8}-[0-9]{6}-[a-f0-9]{6}', self.sid):
@@ -83,13 +84,15 @@ class HandoffSession:
             if st.st_uid != os.getuid() or st.st_mode & 0o077: raise ValueError()
             config = json.loads(config_path.read_text())
             self.mode = config.get('profile_mode')
-            if self.mode != 'disposable' and not (allow_persistent and self.mode == 'persistent'):
+            if self.mode != 'disposable':
                 raise NeedsOwner('fresh_disposable_handoff_required')
-            self.profile = self.directory/'browser-profile' if self.mode == 'disposable' else Path(config['profile_path'])
+            self.profile = self.directory/'browser-profile'
             if not self.profile.is_dir() or self.profile.is_symlink(): raise ValueError()
             status = self.command('status')
             if (status.get('status') != 'ready' or status.get('session_id') != self.sid
                     or status.get('cdp_url') != self.endpoint or not self.endpoint): raise ValueError()
+            expires = datetime.fromisoformat(status['expires_at'].replace('Z', '+00:00'))
+            if expires <= datetime.now(timezone.utc): raise ValueError()
             endpoint = urlsplit(self.endpoint)
             if endpoint.scheme != 'http' or endpoint.hostname not in ('localhost','127.0.0.1') or endpoint.username or endpoint.password: raise ValueError()
         except NeedsOwner: raise
@@ -107,7 +110,7 @@ class HandoffSession:
         try:
             self.command('stop')
             status = self.command('status')  # authoritative readback, not the stop response
-            if (status.get('session_id') != self.sid or status.get('status') != 'stopped'
+            if (status.get('session_id') != self.sid or status.get('status') not in ('stopped', 'expired')
                     or status.get('cleanup_error') or self.profile.exists() or self.profile.is_symlink()
                     or any((self.directory/name).exists() for name in ('capability.json','config.json','vnc-passwd','webroot'))):
                 raise ValueError()
@@ -141,6 +144,29 @@ def finish_handoff(handoff, page):
     except Exception: raise NeedsOwner('handoff_teardown_failed') from None
     emit('teardown', 'ok')
     if signout_error: raise NeedsOwner(signout_error)
+
+
+OWNER_RESUMABLE = frozenset({'open_console_and_sign_in_first', 'sign_in_in_wizard_browser', 'complete_verification'})
+
+
+def finalize_attempt(handoff, page, error):
+    # Authentication/verification is an owner-only takeover, not a failed setup.
+    # Do not navigate/logout/delete the page while the owner is using it. The
+    # existing CLI TTL still retires the disposable session; no extension here.
+    if isinstance(error, NeedsOwner) and str(error) in OWNER_RESUMABLE:
+        try:
+            status = handoff.command('status')
+            expires = datetime.fromisoformat(status['expires_at'].replace('Z', '+00:00'))
+            valid = (status.get('status') == 'ready' and status.get('session_id') == handoff.sid
+                     and expires > datetime.now(timezone.utc))
+        except Exception:
+            valid = False
+        if not valid:
+            handoff.stop_and_verify()
+            raise NeedsOwner('handoff_teardown_failed')
+        emit('teardown', 'needs_owner', str(error))
+        return
+    finish_handoff(handoff, page)
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -475,7 +501,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--step', choices=['all','project','api','branding','audience','client'], default='all')
     parser.add_argument('--project')
-    parser.add_argument('--allow-persistent-profile', action='store_true', help='Explicit diagnostic exception only; retained profiles cannot pass final removal verification')
+
     parser.add_argument('--agreements', default=os.environ.get('GOOGLE_SETUP_AGREEMENTS'), help='JSON agreements object from MCP status/begin')
     parser.add_argument('--audience', choices=['External','Internal'], default='External')
     parser.add_argument('--redirect-uri', default=os.environ.get('GOOGLE_SETUP_REDIRECT_URI'))
@@ -487,10 +513,10 @@ def main():
     for key in ('DEBUG','PWDEBUG','PW_TRACE_DIR'): os.environ.pop(key, None)
     handoff, teardown_attempted = None, False
     try:
-        handoff = HandoffSession(allow_persistent=args.allow_persistent_profile)
+        handoff = HandoffSession()
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
-            page = None
+            page, attempt_error = None, None
             try:
                 browser = p.chromium.connect_over_cdp(handoff.endpoint)
                 context = browser.contexts[0]
@@ -498,9 +524,12 @@ def main():
                 if not pages: raise NeedsOwner('open_console_and_sign_in_first')
                 page = pages[0]
                 run(args, page)
+            except BaseException as error:
+                attempt_error = error
+                raise
             finally:
                 teardown_attempted = True
-                finish_handoff(handoff, page)
+                finalize_attempt(handoff, page, attempt_error)
         emit('dry_run' if args.dry_run else 'setup' if args.step in ('all','client') else args.step, 'ok')
         return 0
     except NeedsOwner as e:

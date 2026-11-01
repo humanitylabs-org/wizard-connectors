@@ -19,7 +19,7 @@ class DisposableHandoffTests(unittest.TestCase):
         self.profile=self.directory/'browser-profile';self.profile.mkdir()
         self.config=self.directory/'config.json'
         self.write_config('disposable')
-        self.status={'session_id':self.sid,'status':'ready','cdp_url':'http://127.0.0.1:9222','cleanup_error':None}
+        self.status={'session_id':self.sid,'status':'ready','cdp_url':'http://127.0.0.1:9222','cleanup_error':None,'expires_at':'2999-01-01T00:00:00Z'}
         self.env=patch.dict(os.environ,{'HUMAN_HANDOFF_HOME':str(self.root),'HANDOFF_SESSION_ID':self.sid,'HANDOFF_CDP_URL':self.status['cdp_url']})
         self.env.start()
     def tearDown(self):self.env.stop();self.tmp.cleanup()
@@ -38,7 +38,7 @@ class DisposableHandoffTests(unittest.TestCase):
                 shutil.copyfile(source/name,dest/name)
             result=subprocess.run([sys.executable,str(dest/'google_cloud_setup.py'),'--help'],cwd=dest,capture_output=True,text=True,timeout=10)
             self.assertEqual(result.returncode,0,result.stderr)
-            self.assertIn('--allow-persistent-profile',result.stdout)
+            self.assertNotIn('--allow-persistent-profile',result.stdout)
             self.assertNotIn('Traceback',result.stderr)
 
     def test_persistent_and_clone_refused_before_any_browser_inspection(self):
@@ -46,7 +46,7 @@ class DisposableHandoffTests(unittest.TestCase):
             self.write_config(mode)
             with self.assertRaisesRegex(script.NeedsOwner,'fresh_disposable_handoff_required'):self.handoff()
         self.write_config('persistent')
-        self.assertEqual(self.handoff(allow_persistent=True).mode,'persistent')
+        with self.assertRaises(TypeError):self.handoff(allow_persistent=True)
         with patch.dict(os.environ,{'HANDOFF_SESSION_ID':'','BROWSER_CDP_URL':'http://127.0.0.1:9222'}):
             with self.assertRaises(script.NeedsOwner):script.HandoffSession()
 
@@ -105,9 +105,9 @@ class DisposableHandoffTests(unittest.TestCase):
             def finalizer(h,p):
                 if failure:raise script.NeedsOwner('handoff_teardown_failed')
                 script.emit('sign_out','ok');script.emit('teardown','ok')
-            with patch.dict('sys.modules',{'playwright.sync_api':module}),patch.object(script.sys,'argv',['google_cloud_setup.py','--allow-persistent-profile']),patch.object(script,'HandoffSession',return_value=session) as factory,patch.object(script,'run',side_effect=lambda a,p:script.emit('deposit','ok')),patch.object(script,'finish_handoff',side_effect=finalizer),contextlib.redirect_stdout(output):
+            with patch.dict('sys.modules',{'playwright.sync_api':module}),patch.object(script.sys,'argv',['google_cloud_setup.py']),patch.object(script,'HandoffSession',return_value=session) as factory,patch.object(script,'run',side_effect=lambda a,p:script.emit('deposit','ok')),patch.object(script,'finish_handoff',side_effect=finalizer),contextlib.redirect_stdout(output):
                 self.assertEqual(script.main(),2 if failure else 0)
-                factory.assert_called_once_with(allow_persistent=True)
+                factory.assert_called_once_with()
             codes=[json.loads(x) for x in output.getvalue().splitlines()]
             self.assertEqual(codes[-1],{'step':'setup','status':'needs_owner','reason':'handoff_teardown_failed'} if failure else {'step':'setup','status':'ok'})
             if not failure:self.assertEqual([x['step'] for x in codes],['deposit','sign_out','teardown','setup'])
@@ -123,3 +123,23 @@ class DisposableHandoffTests(unittest.TestCase):
         codes=[json.loads(x) for x in output.getvalue().splitlines()]
         self.assertEqual(codes[0],{'step':'sign_out','status':'ok'})
         self.assertEqual(codes[1],{'step':'teardown','status':'ok'})
+
+    def test_expired_ready_session_is_refused_before_inspection(self):
+        self.status['expires_at']='2000-01-01T00:00:00Z'
+        with self.assertRaisesRegex(script.NeedsOwner,'handoff_profile_not_verified'):self.handoff()
+
+    def test_owner_auth_gate_preserves_only_active_expiring_disposable_session(self):
+        h=self.handoff()
+        for reason in script.OWNER_RESUMABLE:
+            with patch.object(h,'command',return_value=self.status),patch.object(h,'stop_and_verify') as stop,patch.object(script,'finish_handoff') as finish,contextlib.redirect_stdout(io.StringIO()):
+                script.finalize_attempt(h,None,script.NeedsOwner(reason))
+                stop.assert_not_called();finish.assert_not_called()
+        with patch.object(script,'finish_handoff') as finish:
+            script.finalize_attempt(h,None,script.NeedsOwner('unrecorded_google_agreement'))
+            finish.assert_called_once_with(h,None)
+
+    def test_resumable_gate_never_keeps_expired_session(self):
+        h=self.handoff()
+        with patch.object(h,'command',return_value={**self.status,'expires_at':'2000-01-01T00:00:00Z'}),patch.object(h,'stop_and_verify') as stop:
+            with self.assertRaises(script.NeedsOwner):script.finalize_attempt(h,None,script.NeedsOwner('complete_verification'))
+            stop.assert_called_once()
