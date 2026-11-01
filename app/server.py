@@ -111,7 +111,9 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path.startswith('/service/calendar/'):
             return self.calendar_service(path)
-        if not self.trusted(callback=path == '/api/google/callback'): return
+        if not self.trusted(callback=path in ('/api/google/callback','/privacy')): return
+        if path == '/privacy':
+            return self.send(200,(ROOT/'web/privacy.html').read_bytes(),'text/html; charset=utf-8')
         if path == '/api/google/callback':
             # Google redirects use a separate Lax CSRF cookie, never the Strict owner session.
             try:
@@ -122,15 +124,15 @@ class Handler(BaseHTTPRequestHandler):
                 if not binding: raise Denied('invalid_oauth_state')
                 broker.call('finish', state=q.get('state',[''])[0],browser=binding.value,
                             code=q.get('code',[None])[0],error=q.get('error',[None])[0])
-                message='Google account connected. Close this tab and refresh Connected accounts.'
+                page='google-connected.html'
                 status=200
             except (Denied,ValueError):
-                message='Google authorization did not complete. Return to Connected accounts and try again.'
+                page='google-error.html'
                 status=400
-            return self.send(status, message.encode(), 'text/plain',cookie='connectors_oauth=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
+            return self.send(status,(ROOT/'web'/page).read_bytes(),'text/html; charset=utf-8',cookie='connectors_oauth=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
         if path == "/healthz":
             return self.send(200, {"ok": True, "app": "wizard-connectors", "synthetic_only": True})
-        static = {"/": "index.html", "/app.js":"app.js", "/boot.js":"boot.js", "/styles.css":"styles.css", "/wizard-ui.css":"wizard-ui.css"}
+        static = {"/": "index.html", "/app.js":"app.js", "/boot.js":"boot.js", "/styles.css":"styles.css", "/wizard-ui.css":"wizard-ui.css", "/google-callback.js":"google-callback.js"}
         if path in static:
             p = ROOT / "web" / static[path]
             return self.send(200, p.read_bytes(), mimetypes.guess_type(p.name)[0] or "text/plain")
