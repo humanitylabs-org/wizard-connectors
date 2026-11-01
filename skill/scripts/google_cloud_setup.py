@@ -75,7 +75,11 @@ class Console:
             c = self.p.get_by_role('checkbox', name=re.compile(name, re.I))
             if self.visible(c) and not c.first.is_checked(): raise NeedsOwner('review_google_data_policy_or_terms')
         # Full-page billing/terms gates as well as dialogs.
-        if self.visible(self.p.get_by_role('heading', name=re.compile(r'terms of service|verify your identity|set up billing', re.I))):
+        # Real Console: first-visit terms are an "Agree and continue" form, while API pages carry an
+        # informational "Terms of Service" heading, so gate on the action, not that heading.
+        if self.visible(self.button(r'^Agree and continue$')):
+            raise NeedsOwner('accept_google_cloud_terms')
+        if self.visible(self.p.get_by_role('heading', name=re.compile(r'verify your identity|set up billing', re.I))):
             raise NeedsOwner('review_google_human_gate')
 
     def go(self, path):
@@ -111,16 +115,17 @@ class Console:
             self.project = match.group()
             return
         # Require the resource table to load; an empty/loading screen is not absence.
-        self.p.get_by_role('table').first.wait_for()
+        # Real Console renders the resource list as bare rows (no table/grid role).
+        self.p.get_by_role('table').or_(self.p.get_by_role('row')).first.wait_for()
         if self.visible(row): return self.project_setup()
         self.go('/projectcreate')
-        self.p.get_by_label(re.compile(r'^Project name', re.I)).fill('Wizard')
-        edit = self.button(r'^Edit$')
+        self.p.get_by_label(re.compile(r'^Project name', re.I)).or_(self.p.locator('input[id$="-name-input"]')).first.fill('Wizard')
+        edit = self.button(r'^Edit\b')  # Real Console: "Edit the project id."
         if self.visible(edit): edit.first.click()
-        pid = self.p.get_by_label(re.compile(r'^Project ID', re.I))
+        pid = self.p.get_by_label(re.compile(r'^Project ID', re.I)).or_(self.p.locator('input[id$="-id-input"]'))  # real Console labels lack accessible names
         self.project = 'wizard-' + secrets.token_hex(6)
         if not self.visible(pid): raise NeedsOwner('project_id_control_changed')
-        pid.fill(self.project)
+        pid.first.fill(self.project)
         self.click(r'^Create$')
         # Authoritative readback; Google's creation notification may take time.
         self.p.get_by_text(re.compile(r'created|creation complete', re.I)).first.wait_for(timeout=60000)
@@ -128,11 +133,15 @@ class Console:
 
     def api(self):
         self.go('/apis/library/calendar-json.googleapis.com')
-        enable = self.button(r'^Enable$')
+        enable = self.button(r'^Enable(?: this API)?$')
         # Both states need a loaded page; wait for either action before deciding.
-        enable.or_(self.button(r'^Manage$')).first.wait_for(timeout=30000)
-        if self.visible(enable): self.click(r'^Enable$')
-        self.button(r'^Manage$|^Disable API$').first.wait_for(timeout=60000)
+        enable.or_(self.button(r'^Manage(?: this API)?$')).first.wait_for(timeout=30000)
+        # Real Console ignores clicks until the product page hydrates; then Enable navigates to /apis/api/.
+        if self.visible(enable):
+            self.p.wait_for_timeout(4000)
+            self.click(r'^Enable(?: this API)?$')
+            self.p.wait_for_url(re.compile(r'/apis/api/'), timeout=90000)
+        self.button(r'^Manage(?: this API)?$|^Disable API$').first.wait_for(timeout=60000)
 
     def owner_email(self):
         # Account avatar's accessible label contains the active Google email.
