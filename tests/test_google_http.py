@@ -125,7 +125,7 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(self.finish(p)[0],200)
         self.assertEqual(Broker(self.config,self.fake).pending,{})  # used once, gone after restart too
     def test_sign_in_link_lasts_a_day_for_async_owners(self):
-        # James works asynchronously: a sign-in link must not die within minutes.
+        # Owners work asynchronously: a sign-in link must not die within minutes.
         p=self.start();left=self.b.pending[p['state']]['expires']-time.time()
         self.assertGreaterEqual(left,86000)
         self.b.pending[p['state']]['expires']=time.time()+3*3600  # three hours later: still fine
@@ -320,7 +320,7 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(self.req(path,owner=False)[0],403)
         h=self.grant()
         status=self.req(path,owner=False,headers={**h,'Host':'wizard-connectors-calendar:8799'})
-        self.assertEqual(status[0],200);self.assertEqual(status[1],{'client_configured':True,'accounts':[],'setup_url':'/wizard-connectors/'})
+        self.assertEqual(status[0],200);self.assertEqual(status[1],{'client_configured':True,'accounts':[],'setup_url':'/connected-accounts/'})
         for suffix,body in [('status',None),('calendars',{}),('events',self.event_body('wrong'))]:
             self.assertEqual(self.req('/service/calendar/'+suffix,body,headers={'X-Wizard-Grant':'WRONG'})[0],403)
         self.grant(enforce=False)
@@ -419,6 +419,6 @@ class BrokerHTTPTests(unittest.TestCase):
             g=self.req('/api/state',headers={'X-Forwarded-Prefix':'/wizard-connectors/'})[1]['google']
             self.assertEqual(g['suggested_redirect_uri'],'https://owner.example/wizard-connectors/api/google/callback')
             g=self.req('/api/state',headers={'X-Forwarded-Prefix':'//evil.invalid'})[1]['google']
-            self.assertEqual(g['suggested_redirect_uri'],'https://owner.example/wizard-connectors/api/google/callback')
+            self.assertEqual(g['suggested_redirect_uri'],'https://owner.example/connected-accounts/api/google/callback')
 
 if __name__=='__main__':unittest.main()

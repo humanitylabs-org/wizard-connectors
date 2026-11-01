@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Connected accounts synthetic preview",
-    "version": "0.1.0"
+    "version": "0.2.0-alpha.1"
   },
   "paths": {
     "/api/google/setup/intake": {
@@ -389,7 +389,7 @@
                     "setup_url": {
                       "type": "string",
                       "enum": [
-                        "/wizard-connectors/"
+                        "/connected-accounts/"
                       ]
                     }
                   },
@@ -622,6 +622,24 @@
         }
       }
     },
+    "/api/google/agreements": {
+      "post": {
+        "summary": "Owner-only, same-origin Google setup delegation",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "additionalProperties": false, "required": ["agreements", "version", "country"],
+          "properties": {
+            "agreements": {"type": "array", "uniqueItems": true, "minItems": 3, "maxItems": 3, "items": {"enum": ["cloud_terms", "api_terms", "user_data_policy"]}},
+            "version": {"enum": ["google-2026-11"]},
+            "country": {"type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2, checked against the server country list"}
+          }
+        }}}},
+        "responses": {
+          "200": {"description": "Persisted encrypted before returning accepted IDs, version and country; no secrets"},
+          "400": {"description": "Malformed or extra fields"}, "401": {"description": "Owner authentication required"},
+          "403": {"description": "Host, Origin or cross-site request denied"}, "409": {"description": "Invalid agreements or encrypted storage unavailable"}
+        }
+      }
+    },
     "/api/google/client": {
       "post": {
         "summary": "Owner-only encrypted OAuth client save/replace",
@@ -740,8 +758,8 @@
     }
   },
   "x-mcp-tools": {
-    "google_app_setup_status": {"authentication":"existing MCP bearer", "arguments":{}, "returns":["configured","managed","redirect_uri","required_apis","required_scopes"], "privateContent":false},
-    "google_app_setup_begin": {"authentication":"existing MCP bearer", "arguments":{}, "returns":["intake_url","expires_in","redirect_uri"], "description":"256-bit capability only, never Google credentials; 1800 seconds, single-use, reissue supersedes, broker restart invalidates"}
+    "google_app_setup_status": {"authentication":"existing MCP bearer", "arguments":{}, "returns":["configured","managed","redirect_uri","required_apis","required_scopes","agreements"], "privateContent":false},
+    "google_app_setup_begin": {"authentication":"existing MCP bearer", "arguments":{}, "returns":["intake_url","expires_in","redirect_uri","agreements"], "description":"256-bit capability only, never Google credentials; 1800 seconds, single-use, reissue supersedes, broker restart invalidates"}
   },
   "components": {
     "securitySchemes": {

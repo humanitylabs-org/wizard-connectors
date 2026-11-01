@@ -9,9 +9,8 @@ x-security: &security
 services:
   ingress:
     <<: *security
-    build: &build
-      context: .
-      dockerfile: app/Dockerfile
+    image: wizard-connectors:0.2.0-alpha.1
+    pull_policy: never
     command: [python, app/ingress.py]
     networks:
       ingress-lane: {}
@@ -23,7 +22,8 @@ services:
       internal_port: 8799
   wizard-connectors:
     <<: *security
-    build: *build
+    image: wizard-connectors:0.2.0-alpha.1
+    pull_policy: never
     environment:
       PORT: "8799"
       DATA_DIR: /data
@@ -35,7 +35,7 @@ services:
       PRIVATE_ROUTE_CONFIGURED: ${PRIVATE_ROUTE_CONFIGURED:-false}
       MEDIA_WORKER_TOKEN: ${MEDIA_WORKER_TOKEN:?Required}
       ISOLATED_PACKAGE: "true"
-      WIZARD_TRUSTED_HOSTS: ${WIZARD_TRUSTED_HOSTS:-localhost,127.0.0.1}
+      WIZARD_TRUSTED_HOSTS: ${WIZARD_TRUSTED_HOSTS:-}
       WIZARD_TRUSTED_ORIGINS: ${WIZARD_TRUSTED_ORIGINS:-}
       WIZARD_GRANTS_FILE: /wizard/grants.json
     # WAM injects its standard read-only /wizard grants directory into services.
@@ -43,7 +43,8 @@ services:
     networks: [ingress-lane, google-lane, private-lane, media-lane]
   google-broker:
     <<: *security
-    build: *build
+    image: wizard-connectors:0.2.0-alpha.1
+    pull_policy: never
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: google
@@ -60,7 +61,8 @@ services:
     networks: [google-lane, google-egress]
   media-worker:
     <<: *security
-    build: *build
+    image: wizard-connectors:0.2.0-alpha.1
+    pull_policy: never
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: media
@@ -71,7 +73,8 @@ services:
     networks: [media-lane, media-egress]
   private-worker:
     <<: *security
-    build: *build
+    image: wizard-connectors:0.2.0-alpha.1
+    pull_policy: never
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: private

@@ -73,7 +73,10 @@ class GoogleConnectUXTests(unittest.TestCase):
         self.assertIn('stored encrypted on your Wizard server', page)
         self.assertIn('server administrator remains trusted', page)
         self.assertEqual(self.req('/api/state', owner=False)[0], 401)
-        self.assertEqual(self.req('/privacy', owner=False, headers={'Host': 'evil.invalid'})[0], 403)
+        # Explicit installer pins still restrict Host; fresh installs use same-host origins.
+        from unittest.mock import patch
+        with patch.object(self.ui, 'HOSTS', {'localhost','127.0.0.1'}):
+            self.assertEqual(self.req('/privacy', owner=False, headers={'Host': 'evil.invalid'})[0], 403)
 
 
 class GoogleWebUIContractTests(unittest.TestCase):

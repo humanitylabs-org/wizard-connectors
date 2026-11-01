@@ -11,7 +11,7 @@
   ],
   "description": "Owner-managed Google app, account permissions, read-only Calendar source and simulated private chat.",
   "tipi_version": 1,
-  "version": "0.1.0",
+  "version": "0.2.0-alpha.1",
   "source": "https://github.com/humanitylabs-org/wizard-connectors",
   "exposable": false,
   "supported_architectures": [
@@ -25,13 +25,6 @@
   "uid": 1000,
   "gid": 1000,
   "form_fields": [
-    {
-      "type": "text",
-      "env_variable": "CONNECTORS_IMAGE",
-      "label": "Reviewed image ID or immutable digest",
-      "required": true,
-      "hint": "Load the reviewed image on this host first; pin its sha256 ID."
-    },
     {
       "type": "password",
       "env_variable": "CONNECTORS_OWNER_TOKEN",
@@ -91,13 +84,15 @@
       "type": "text",
       "env_variable": "WIZARD_TRUSTED_HOSTS",
       "label": "Trusted route hosts (comma separated)",
-      "default": "localhost,127.0.0.1",
+      "default": "",
+      "hint": "Optional host restriction. Leave blank to use the current Wizard host and same-host browser requests.",
       "required": false
     },
     {
       "type": "text",
       "env_variable": "WIZARD_TRUSTED_ORIGINS",
       "label": "Trusted HTTPS origins (comma separated)",
+      "default": "",
       "required": false
     },
     {

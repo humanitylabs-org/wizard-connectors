@@ -19,6 +19,7 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 from urllib.error import HTTPError
 from cryptography.fernet import Fernet
 import jwt
+import google_agreements as agreements
 
 IDENTITY = frozenset({'openid', 'email'})
 YOUTUBE = 'https://www.googleapis.com/auth/youtube.readonly'
@@ -194,6 +195,24 @@ class Broker:
         validate_redirect(redirect_uri)
         return self._set_client({'client_id':client_id,'client_secret':client_secret,'redirect_uri':redirect_uri})
 
+    def agreement_status(self):
+        saved = self.state.get('agreements') or {}
+        return {'accepted': list(saved.get('agreements', [])), 'version': saved.get('version', ''),
+                'country': saved.get('country', '')}
+
+    def save_agreements(self, agreements, version, country):
+        from google_agreements import IDS, VERSION, COUNTRIES
+        if (not isinstance(agreements, list) or any(not isinstance(x, str) for x in agreements)
+                or len(agreements) != len(IDS) or set(agreements) != IDS
+                or version != VERSION or not isinstance(country, str) or country not in COUNTRIES):
+            raise Denied('invalid_google_agreements')
+        with self.lock:
+            new = self._copy()
+            new['agreements'] = {'agreements': sorted(IDS), 'version': VERSION, 'country': country,
+                                 'accepted_at': datetime.now().astimezone().isoformat()}
+            self._commit(new)
+            return self.agreement_status()
+
     def setup_status(self, redirect_uri):
         validate_redirect(redirect_uri)
         with self.lock:
@@ -201,7 +220,7 @@ class Broker:
             return {'configured': c['client_configured'], 'managed': c['client_source'] == 'env',
                     'redirect_uri': c['redirect_uri'] or redirect_uri,
                     'required_apis': ['calendar-json.googleapis.com'],
-                    'required_scopes': sorted(IDENTITY | {CALENDAR})}
+                    'required_scopes': sorted(IDENTITY | {CALENDAR}), 'agreements': self.agreement_status()}
 
     def setup_begin(self, redirect_uri):
         validate_redirect(redirect_uri)
@@ -263,7 +282,7 @@ class Broker:
             return {'state': 'connected' if accounts else 'not_connected', 'accounts': accounts,
                     'grants': [{'account': a['id'], 'scopes': a['scopes'], 'status': a['status']} for a in accounts],
                     'bindings': [binding] if binding else [], 'calendar_binding': self._copy()['calendar_binding'],
-                    **self.client_status(), 'blocker': self.gate(),
+                    **self.client_status(), 'agreements': self.agreement_status(), 'agreement_options': agreements.options(), 'blocker': self.gate(),
                     'provider_revocation': self.state['revocation'],
                     'music': {'state': 'bound' if binding else 'unbound', 'provider': 'youtube-music',
                               'catalog': 'youtube-data-api', 'playback': 'separate_existing_app',
@@ -407,7 +426,7 @@ class Broker:
                     'accounts':[{'account':aid, 'email':a.get('email',''),
                                  'calendar_allowed':aid in self.state['calendar_binding']['accounts'] and CALENDAR in a['scopes'] and a['status']=='active' and not self.gate(),
                                  'status':a['status']} for aid,a in self.state['accounts'].items()],
-                    'setup_url':'/wizard-connectors/'}
+                    'setup_url':'/connected-accounts/'}
 
     def _invalidate(self, account, error):
         if str(error) in ('reauth_required','scope_consent_required','provider_permission_denied'):

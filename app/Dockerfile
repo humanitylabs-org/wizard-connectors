@@ -8,6 +8,7 @@ LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 COPY app ./app
 COPY web ./web
 COPY tests ./tests
+COPY qa ./qa
 COPY skill ./skill
 COPY openapi.json ./
 USER 1000:1000

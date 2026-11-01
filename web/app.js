@@ -5,6 +5,48 @@ let googleSetup = null, googleStep = 1, googleProject = '', googleAudience = 'Ex
 const googleChecks = new Set();
 let googleRedirect = '', googleAuth = null, googleAuthRequest = 0;
 let googleDraft = {id:'', secret:''};
+let agreementDraft = null, googleManualFrom = null;
+function startGoogleSetup(){
+ const g=state.google,a=g.agreements,o=g.agreement_options;
+ agreementDraft={accepted:new Set(a?.version===o?.version?a.accepted:[]),country:a?.country||''};
+ if(!agreementDraft.country)try{const region=new Intl.Locale(navigator.language).region;if(o?.countries.includes(region))agreementDraft.country=region;}catch{}
+ googleSetup='agreements';render();
+}
+function googleAgreementLinks(g){
+ for(const d of g.agreement_options?.documents||[]){const a=append('a',d.title,'google-link');a.href=d.url;a.target='_blank';a.rel='noopener noreferrer';}
+}
+function renderGoogleAgreements(g){
+ append('h2','Before your wizard sets up Google');
+ append('p','Your wizard will create a Google app in your own Google account. Google asks you to agree to these first.');
+ append('p','Tick each box to let your wizard accept that agreement for you during setup.');
+ const o=g.agreement_options,draft=agreementDraft;
+ if(!o){append('p','Could not load the agreements. Go back and try again.','google-status');return;}
+ const form=append('form',undefined,'google-agreements');
+ const boxes=[];
+ for(const d of o.documents){
+  const row=element('div',undefined,'google-agreement-row'),l=element('label',undefined,'google-done'),c=element('input');
+  c.type='checkbox';c.checked=agreementDraft.accepted.has(d.id);c.required=true;
+  l.append(c,document.createTextNode('I agree to the '+d.title));row.append(l);
+  const a=element('a','Read '+d.title,'google-link');a.href=d.url;a.target='_blank';a.rel='noopener noreferrer';row.append(a);form.append(row);
+  c.onchange=()=>{c.checked?agreementDraft.accepted.add(d.id):agreementDraft.accepted.delete(d.id);validate();};boxes.push(c);
+ }
+ const l=element('label','Country','wz-label'),s=element('select',undefined,'wz-input');s.required=true;s.setAttribute('aria-label','Country');l.append(s);form.append(l);
+ const empty=element('option','Choose your country');empty.value='';s.append(empty);
+ let names;try{names=new Intl.DisplayNames([navigator.language],{type:'region'});}catch{}
+ const countries=o.countries.map(code=>({code,name:names?.of(code)||code})).sort((a,b)=>a.name.localeCompare(b.name));
+ for(const {code,name} of countries){const option=element('option',name);option.value=code;s.append(option);}s.value=agreementDraft.country;
+ s.onchange=()=>{agreementDraft.country=s.value;validate();};
+ form.append(element('small','Your wizard will leave optional marketing emails turned off. It will stop if Google asks for a different agreement, payment or identity check.'));
+ const save=button('Agree and continue',()=>{},form,'primary');save.type='submit';
+ let saving=false;
+ const validate=()=>{save.disabled=saving||!boxes.every(c=>c.checked)||!o.countries.includes(s.value);};validate();
+ form.onsubmit=async e=>{e.preventDefault();if(save.disabled)return;saving=true;for(const c of boxes)c.disabled=true;s.disabled=true;validate();save.textContent='Saving…';save.setAttribute('aria-busy','true');
+  try{const result=await api('google/agreements',{agreements:[...agreementDraft.accepted],version:o.version,country:s.value});
+   state.google.agreements=result;if(googleSetup!=='agreements'||agreementDraft!==draft)return;googleSetup='agent';render();
+  }catch{if(googleSetup==='agreements'&&agreementDraft===draft)dialog('Could not save your agreements','Your wizard will not start until these choices are saved. Try again.');}
+  finally{if(save.isConnected){saving=false;for(const c of boxes)c.disabled=false;s.disabled=false;save.textContent='Agree and continue';save.removeAttribute('aria-busy');validate();}}
+ };
+}
 function discardClientDraft(){googleDraft={id:'',secret:''};clientHold?.release();clientHold=null;}
 function clearGoogleWatch(){clearInterval(googleWatch);googleWatch=null;}
 function cancelGoogleAuth(){googleAuthRequest++;clearGoogleWatch();if(googleAuth?.popup)try{googleAuth.popup.close();}catch{}googleAuth=null;}
@@ -36,7 +78,7 @@ $('dialog').addEventListener('pointerdown',e=>{dialogOutsideDown=e.target===$('d
 $('dialog').addEventListener('click',e=>{if(e.target===$('dialog')&&dialogOutsideDown&&outsideDialog(e))closeDialog();dialogOutsideDown=false;});
 $('dialog-close').onclick=closeDialog;$('dialog').addEventListener('cancel',e=>{e.preventDefault();closeDialog();});
 function navigate(next){if(view==='google'&&next!=='google'){if(clientHold){if(!confirm('Discard unsaved Google app configuration?'))return;discardClientDraft();}cancelGoogleAuth();}view=next;document.body.dataset.view=view;render();}
-function back(){if(view==='google'&&googleAuth){cancelGoogleAuth();render();return true;}if(view==='google'&&googleSetup){if(clientHold){if(!confirm('Discard unsaved Google app configuration?'))return true;discardClientDraft();}if(googleSetup==='manual'&&googleStep>1)googleStep--;else googleSetup=null;render();return true;}if(view!=='root'){navigate('root');return true;}return false;}
+function back(){if(view==='google'&&googleAuth){cancelGoogleAuth();render();return true;}if(view==='google'&&googleSetup){if(clientHold){if(!confirm('Discard unsaved Google app configuration?'))return true;discardClientDraft();}if(googleSetup==='manual'&&googleStep>1)googleStep--;else if(googleSetup==='manual'){googleSetup=googleManualFrom;googleManualFrom=null;}else if(googleSetup==='agent')googleSetup='agreements';else googleSetup=null;render();return true;}if(view!=='root'){navigate('root');return true;}return false;}
 function googleAccountStatus(a){return ['active','connected'].includes(a.status)?'Connected':a.status==='reauth_required'?'Sign in again':'Check connection';}
 function renderRootGoogle(){
  const g=state.google,n=g.accounts.length,calendarOn=(g.calendar_binding?.accounts||[]).some(id=>g.accounts.some(a=>a.id===id));
@@ -77,25 +119,27 @@ function renderGoogleAuthorization(){
  }
  append('p',googleError(a.error),'google-status').setAttribute('role','alert');
  button('Try again',()=>authorize(a.account,a.youtube,a.calendar),detail,'primary');
- if(a.error==='google_configuration_required')button('Set up Google app',()=>{cancelGoogleAuth();googleSetup='agent';render();});
+ if(a.error==='google_configuration_required')button('Set up Google app',()=>{cancelGoogleAuth();startGoogleSetup();});
  button('Back to accounts',()=>{cancelGoogleAuth();render();});
 }
 function googleLink(label,path){const a=append('a',label,'google-link');a.href='https://console.cloud.google.com'+path+(googleProject?'?project='+encodeURIComponent(googleProject):'');a.target='_blank';a.rel='noopener noreferrer';return a;}
 async function copyGoogle(text,label){try{await navigator.clipboard.writeText(text);dialog('Copied',label+' copied.');}catch{dialog('Copy unavailable','Select and copy the text shown on this screen.');}}
+function manualGoogle(step=1){googleManualFrom=googleSetup==='agent'?'agent':null;googleSetup='manual';googleStep=step;render();}
 function renderGoogleApp(g){
+ if(googleSetup==='agreements')return renderGoogleAgreements(g);
  if(googleSetup==='manual')return renderGoogleSteps(g);
  append('h2',googleSetup==='agent'?'Let your wizard do the setup':'Set up Google once');
  if(googleSetup==='agent'){
   append('p','Send this message to your wizard:');append('pre','Set up my Google app','google-copy');
   button('Copy message',()=>copyGoogle('Set up my Google app','Message'),detail,'primary');
-  append('p','You sign in with your own main Google account in the Wizard Browser. Your wizard creates the app and pauses for anything only you can approve. The secret goes straight to Connected accounts, never into chat.');
+  append('p','You sign in with your own main Google account in a private, temporary browser. Only you type your password and verification code; your wizard cannot see them. The browser signs out and is deleted after setup. Your wizard accepts the agreements you ticked and creates the app. It pauses for any new agreement, payment or identity check. The secret goes straight to Connected accounts, never into chat.');
   button('Check setup',async()=>{try{const next=await api('state');state=next;if(next.google.client_configured){googleSetup=null;render();}else dialog('Not set up yet','Ask your wizard to finish, then check again.');}catch{dialog('Could not check','Try again when Connected accounts is available.');}});
-  button('Set it up myself',()=>{googleSetup='manual';googleStep=1;render();});return;
+  button('Set it up myself',()=>manualGoogle());return;
  }
  append('p','Before connecting accounts, your Wizard needs a Google app: a permission key you create in your own Google account. Set it up once, then add as many accounts as you like.');
  const actions=append('div',undefined,'actions google-setup-actions');
- button('Let your wizard set this up',()=>{googleSetup='agent';render();},actions,'primary');
- button('Set it up myself',()=>{googleSetup='manual';googleStep=1;render();},actions);
+ button('Let your wizard set this up',startGoogleSetup,actions,'primary');
+ button('Set it up myself',()=>manualGoogle(),actions);
  append('small','Your wizard does not need its own Google account. You choose what each connected account can share.');
 }
 function renderGoogleSteps(g){
@@ -109,6 +153,7 @@ function renderGoogleSteps(g){
   const l=append('label','Who will use it?','wz-label'),s=element('select',undefined,'wz-input');
   for(const [v,t] of [['External','My own accounts — External'],['Internal','Company Workspace only — Internal (admin)']]){const o=element('option',t);o.value=v;s.append(o);}s.value=googleAudience;s.onchange=()=>googleAudience=s.value;l.append(s);
   append('small','External works across your accounts. Internal is only for accounts inside your company’s Google Workspace organization.');
+  append('p','Read Google’s agreements before continuing. You will tick Google’s own boxes when you set this up yourself.');googleAgreementLinks(g);
  }
  if(googleStep===2){
   append('p','Create a project named Wizard in your own main Google account. Keep the project selected for the next steps.');
@@ -158,7 +203,7 @@ function renderGoogle(){
  renderGoogleAccounts(g);
  const appRow=append('section',undefined,'google-app-row');
  appRow.append(element('span','Google app · Set up'));
- button('Change',()=>{googleSetup='manual';googleStep=6;render();},appRow,'text-button');
+ button('Change',()=>manualGoogle(6),appRow,'text-button');
  append('small','Your sign-in details stay on your own Wizard server, not in chat.','google-privacy');
  const privacy=append('a','Privacy','google-link');privacy.href='privacy';privacy.target='_blank';privacy.rel='noopener noreferrer';
 }
@@ -222,4 +267,4 @@ function renderGoogleAccounts(g){
 }
 $('google-row').onclick=()=>{googleSetup=null;navigate('google');if(state.google.client_configured&&!state.google.accounts.length)authorize();};
 $('unlock').onsubmit=async e=>{e.preventDefault();try{await api('session',{token:$('owner-token').value});$('owner-token').value='';await refresh();}catch{dialog('Could not unlock','Use the app installer’s owner token, not a Google password.');}};
-if(!window.WizardApp){$('system-error').hidden=false;$('system-error').textContent='Shared WizardApp core is unavailable. Configure the approved shell resource before using this preview.';$('workspace').hidden=true;}else{WizardApp.ready({name:'Connected accounts',version:'0.1.0'});WizardApp.back.register({canGoBack:()=>view!=='root',back});refresh().catch(e=>{if(e.message==='owner_auth_required'){$('workspace').hidden=true;$('unlock').hidden=false;}else{$('system-error').hidden=false;$('system-error').textContent='Could not load app state.';}});}
+if(!window.WizardApp){$('system-error').hidden=false;$('system-error').textContent='Shared WizardApp core is unavailable. Configure the approved shell resource before using this preview.';$('workspace').hidden=true;}else{WizardApp.ready({name:'Connected accounts',version:'0.2.0-alpha.1'});WizardApp.back.register({canGoBack:()=>view!=='root',back});refresh().catch(e=>{if(e.message==='owner_auth_required'){$('workspace').hidden=true;$('unlock').hidden=false;}else{$('system-error').hidden=false;$('system-error').textContent='Could not load app state.';}});}

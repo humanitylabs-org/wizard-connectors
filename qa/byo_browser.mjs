@@ -73,7 +73,7 @@ try{
     if(step===3)check('project-aware Calendar API deep link',(await f.getByRole('link',{name:'Open Google Calendar API'}).getAttribute('href')).includes('calendar-json.googleapis.com?project=wizard-fixture-123'));
     if(step===4)check('production and expected warning explained',(await f.locator('#detail').innerText()).includes('7-day logouts'));
     if(step===5){
-     check('redirect presented only when needed',await f.getByLabel('Authorized redirect URI').inputValue()==='https://owner.example/wizard-connectors/api/google/callback');
+     check('redirect presented only when needed',await f.getByLabel('Authorized redirect URI').inputValue()==='https://owner.example/connected-accounts/api/google/callback');
      await f.getByRole('button',{name:'Copy redirect URI',exact:true}).click();await f.locator('dialog[open]').waitFor();
      for(const name of ['nebula','signal']){await skin(p,f,name);await shot(p,f,size+'-'+name+'-redirect-modal');}
      // Native dialog backdrop dismissal, not only its close button.

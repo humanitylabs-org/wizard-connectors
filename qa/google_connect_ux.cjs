@@ -11,8 +11,9 @@ const checks=[],errors=[],writes=[],blocked=[],screenshots=[];
 const read=name=>fs.readFileSync(path.join(source,'web',name),'utf8');
 const calendar='https://www.googleapis.com/auth/calendar.readonly',youtube='https://www.googleapis.com/auth/youtube.readonly';
 const reason=fs.readFileSync(path.join(source,'app/server.py'),'utf8').match(/'consent_denied': '([^']+)'/)[1];
-const initial=()=>({google:{client_configured:true,client_source:'saved',client_id:'fixture.apps.googleusercontent.com',redirect_uri:'https://callback.fixture.invalid/api/google/callback',accounts:[{id:'fixture-account',email:'calendar-demo@example.invalid',status:'active',offline:true,scopes:['openid','email',calendar]}],calendar_binding:{accounts:['fixture-account']},bindings:[],music:{state:'unbound'},blocker:null}});
-let fixture=initial(),connectMode='fixture',delay=0,bindDelay=0,bindError=false,stateError=false;
+const initial=()=>({google:{agreements:{accepted:[],version:'',country:''},agreement_options:agreementOptions,client_configured:true,client_source:'saved',client_id:'fixture.apps.googleusercontent.com',redirect_uri:'https://callback.fixture.invalid/api/google/callback',accounts:[{id:'fixture-account',email:'calendar-demo@example.invalid',status:'active',offline:true,scopes:['openid','email',calendar]}],calendar_binding:{accounts:['fixture-account']},bindings:[],music:{state:'unbound'},blocker:null}});
+const agreementOptions={version:'google-2026-11',countries:['GB','US'],documents:[{id:'cloud_terms',title:'Google Cloud Terms of Service',url:'https://cloud.google.com/terms'},{id:'api_terms',title:'Google APIs Terms of Service',url:'https://developers.google.com/terms'},{id:'user_data_policy',title:'Google API Services User Data Policy',url:'https://developers.google.com/terms/api-services-user-data-policy'}]};
+let fixture=initial(),connectMode='fixture',delay=0,bindDelay=0,bindError=false,stateError=false,agreementError=false;
 fs.mkdirSync(out,{recursive:true});
 function check(name,ok=true){assert(ok,name);checks.push({name,ok:true});console.log('PASS '+name);}
 // QA-only bridge for standalone pages; production WizardApp and appearance transport
@@ -50,6 +51,7 @@ async function routeHandler(route){
    if(bindError)return json({error:'fixture_write_failure'},503);
    const ids=new Set(fixture.google.calendar_binding.accounts);data.consent?ids.add(data.account):ids.delete(data.account);fixture.google.calendar_binding.accounts=[...ids];return json({ok:true});
   }
+  if(rel==='api/google/agreements'){if(agreementError)return json({error:'fixture_storage_failure'},503);fixture.google.agreements={accepted:data.agreements,version:data.version,country:data.country};return json(fixture.google.agreements);}
   if(rel==='api/google/client')return json({error:'local_storage_unavailable'},503);
   if(rel==='api/google/disconnect'){fixture.google.accounts=fixture.google.accounts.filter(a=>a.id!==data.account);return json({ok:true});}
   if(rel==='api/music/bind'){fixture.google.bindings=[{account:data.account}];return json({ok:true});}
@@ -103,9 +105,23 @@ async function routeHandler(route){
   fixture=initial();await p.getByRole('button',{name:'Check accounts',exact:true}).click();await p.getByRole('button',{name:'Change',exact:true}).click();await p.getByLabel('Client ID',{exact:true}).fill('fixture.apps.googleusercontent.com');await p.getByLabel('Client secret',{exact:true}).fill('FIXTURE_ONLY_NOT_A_SECRET');
   check('credential step cannot bypass Save',await p.getByRole('button',{name:'Next',exact:true}).count()===0);await p.getByRole('button',{name:'Save Google app',exact:true}).click();await p.getByRole('heading',{name:'Could not save Google app',exact:true}).waitFor();await p.locator('#dialog-close').click();
   await skin(p,'nebula');check('skin switch preserves unsaved form',await p.getByLabel('Client ID',{exact:true}).inputValue()==='fixture.apps.googleusercontent.com');p.once('dialog',d=>d.dismiss());await p.getByRole('button',{name:'← Back',exact:true}).click();check('Back cancel preserves draft',await p.getByLabel('Client ID',{exact:true}).isVisible());p.once('dialog',d=>d.accept());await p.getByRole('button',{name:'← Back',exact:true}).click();
-  fixture.google.client_configured=false;fixture.google.accounts=[];fixture.google.blocker='google_configuration_required';await p.goto(base);await p.locator('#google-row').click();await p.getByRole('button',{name:'Let your wizard set this up',exact:true}).click();await p.getByRole('button',{name:'Copy message',exact:true}).click();await p.locator('dialog[open]').waitFor();check('setup handoff message exact',await p.locator('pre').innerText()==='Set up my Google app');
+  fixture.google.client_configured=false;fixture.google.accounts=[];fixture.google.blocker='google_configuration_required';await p.goto(base);await p.locator('#google-row').click();await p.getByRole('button',{name:'Let your wizard set this up',exact:true}).click();
+  await p.getByRole('heading',{name:'Before your wizard sets up Google',exact:true}).waitFor();
+  const agree=p.getByRole('button',{name:'Agree and continue',exact:true}),country=p.getByLabel('Country',{exact:true});
+  check('agreements start unticked and disabled',await p.locator('.google-agreements input:checked').count()===0&&await agree.isDisabled());
+  check('three public agreement links',await p.locator('.google-agreement-row a[target="_blank"]').count()===3);
+  check('checkbox rows have large touch targets',(await p.locator('.google-agreement-row label').evaluateAll(es=>es.every(e=>e.getBoundingClientRect().height>=44))));
+  const agreementsDocument=await p.evaluate(()=>window.__agreementsId=crypto.randomUUID());
+  for(const name of Object.keys(palettes)){await capture(p,name,'google-agreements');check('skin switch preserves agreements document',await p.evaluate(()=>window.__agreementsId)===agreementsDocument);}
+  for(const c of await p.locator('.google-agreements input[type="checkbox"]').all())await c.check();
+  await country.selectOption('');check('country required even with all boxes checked',await agree.isDisabled());await country.selectOption('GB');
+  agreementError=true;await agree.click();await p.getByRole('heading',{name:'Could not save your agreements',exact:true}).waitFor();await p.locator('#dialog-close').click();check('save failure retains choices and does not start wizard',await p.locator('.google-agreements input:checked').count()===3&&await agree.isEnabled());agreementError=false;
+  await agree.click();await p.getByRole('button',{name:'Copy message',exact:true}).waitFor();
+  assert.deepEqual(writes.at(-1).data,{agreements:['cloud_terms','api_terms','user_data_policy'],version:'google-2026-11',country:'GB'});check('explicit agreement version country and ids saved before handoff');
+  await p.evaluate(()=>window.__qaBack());await p.getByRole('heading',{name:'Before your wizard sets up Google',exact:true}).waitFor();check('shared Back returns to agreements without leaving app');await agree.click();
+  await p.getByRole('button',{name:'Copy message',exact:true}).click();await p.locator('dialog[open]').waitFor();check('setup handoff message exact',await p.locator('pre').innerText()==='Set up my Google app');
   const box=await p.locator('dialog').boundingBox();await p.mouse.click(box.x+box.width/2,box.y-10);await p.locator('dialog[open]').waitFor({state:'detached'});check('outside tap closes dialog');
-  await p.evaluate(()=>window.__qaBack());await p.getByRole('button',{name:'Set it up myself',exact:true}).click();await p.locator('input[type="checkbox"]').check();await p.getByRole('button',{name:'Next',exact:true}).click();await p.getByText('2 of 7',{exact:true}).waitFor();await p.evaluate(()=>window.__qaBack());await p.getByText('1 of 7',{exact:true}).waitFor();check('nested Back steps once without leaving app');
+  await p.getByRole('button',{name:'Set it up myself',exact:true}).click();check('manual setup includes three agreement links',await p.locator('#detail a[href^="https://developers.google.com/terms"],#detail a[href="https://cloud.google.com/terms"]').count()===3);await p.evaluate(()=>window.__qaBack());await p.getByRole('button',{name:'Copy message',exact:true}).waitFor();check('manual Back returns to wizard handoff');await p.getByRole('button',{name:'Set it up myself',exact:true}).click();await p.locator('input[type="checkbox"]').check();await p.getByRole('button',{name:'Next',exact:true}).click();await p.getByText('2 of 7',{exact:true}).waitFor();await p.evaluate(()=>window.__qaBack());await p.getByText('1 of 7',{exact:true}).waitFor();check('nested Back steps once without leaving app');
   for(const [rel,label]of [['api/google/connected','google-connected'],['api/google/error','google-error']]){
    await p.goto(base+rel);await p.getByRole('heading').waitFor();check(label+' has instructions, no nonworking navigation',await p.locator('button,a').count()===0);
    if(label==='google-error')check('error reason replaced',await p.getByText(reason,{exact:true}).isVisible()&&!(await p.locator('main').innerText()).includes('{{REASON}}'));
@@ -115,7 +131,7 @@ async function routeHandler(route){
   fixture=initial();await p.setViewportSize({width:1440,height:1000});await open();await p.locator('#google-row').click();for(const name of Object.keys(palettes))await capture(p,name,'desktop-google');
   check('wide app has no outer width cap',await p.locator('.wz-app').evaluate(e=>getComputedStyle(e).maxWidth)==='none');
   check('no browser exceptions',errors.length===0);check('all traffic fixture-only',blocked.every(h=>h==='accounts.google.com'));
-  check('eight requested mobile screen/skin captures',screenshots.filter(x=>!x.startsWith('desktop-')).length===8);
+  check('ten requested mobile screen/skin captures',screenshots.filter(x=>!x.startsWith('desktop-')).length===10);
   await ctx.close();
  }finally{
   await browser.close();fs.writeFileSync(path.join(out,'browser-receipt.json'),JSON.stringify({mode:'standalone-candidate-synthetic-api-and-skins',checks,errors,writes,blocked,screenshots,liveOwnerWrites:0},null,2)+'\n');

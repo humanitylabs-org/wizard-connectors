@@ -5,13 +5,13 @@ renamed_from: [wizard-connectors]
 name: Connected accounts
 type: service
 category: app
-version: 0.1.0
+version: 0.2.0-alpha.1
 summary: Owner-managed Google account broker and simulated private chat summaries.
 license: MIT
 source: https://github.com/humanitylabs-org/wizard-connectors
 runtime:
   kind: runtipi
-  package: build
+  package: image
   config: runtipi/config.json
   compose: runtipi/docker-compose.yml
 api:
@@ -51,6 +51,9 @@ Calendar sends its key as `X-Wizard-Grant`. There is no owner-session requiremen
 on this service API. Report-only mode does not weaken Calendar authentication.
 WAM injects the standard read-only grants directory into all app services; the
 recipe must not mount an app-specific bridge. Ingress is `is_main`, port 8799, so
-WAM publishes it under `provider_endpoints["wizard-connectors"]`. The shared
+WAM publishes it under `provider_endpoints["connected-accounts"]` for fresh installs
+(legacy installs may retain `provider_endpoints["wizard-connectors"]`). Calendar
+must declare `uses: [connected-accounts]` or the `calendar-source` slot; see the
+fresh-install compatibility contract and upstream Calendar gap in docs/CALENDAR_API.md. The shared
 network name can be configured with
 `WIZARD_MAIN_NETWORK` for isolated staging. See docs/CALENDAR_API.md.

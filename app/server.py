@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OWNER = os.environ.get("CONNECTORS_OWNER_TOKEN", "")
 MCP = os.environ.get("CONNECTORS_MCP_TOKEN", "")
 MUSIC = os.environ.get('MUSIC_ADAPTER_TOKEN','')
-HOSTS = {s.split(":")[0] for s in os.environ.get("WIZARD_TRUSTED_HOSTS", "localhost,127.0.0.1").split(",") if s}
+HOSTS = {s.split(":")[0] for s in os.environ.get("WIZARD_TRUSTED_HOSTS", "").split(",") if s}
 ORIGINS = {s.rstrip("/") for s in os.environ.get("WIZARD_TRUSTED_ORIGINS", "").split(",") if s}
 model = RemotePrivateModel() if os.environ.get('PRIVATE_WORKER_TOKEN') else PrivateModel(os.environ.get("TINFOIL_API_KEY", ""))
 jobs = Jobs(model, os.environ.get("DATA_DIR", "/data"))
@@ -66,7 +66,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def trusted(self, callback=False):
         host = self.headers.get("Host", "").split(":")[0]
-        if host not in HOSTS:
+        if (HOSTS and host not in HOSTS) or not re.fullmatch(r'[A-Za-z0-9.-]+(?::[0-9]{1,5})?', self.headers.get('Host', '')):
             self.send(403, {"error": "host_denied"}); return False
         origin = self.headers.get("Origin")
         allowed = ORIGINS | {"http://" + self.headers.get("Host", ""), "https://" + self.headers.get("Host", "")}
@@ -89,13 +89,15 @@ class Handler(BaseHTTPRequestHandler):
             return False
 
     def callback_guess(self):
-        # Only use configured trusted HTTPS origins, never a forwarded host.
+        # Same-host HTTPS by default, or a configured trusted origin; never a forwarded host.
         origin = next(iter(sorted(o for o in ORIGINS if o.startswith('https://'))), '')
         request_origin = 'https://' + self.headers.get('Host', '')
         if request_origin in ORIGINS: origin = request_origin
-        if not origin: origin = 'http://' + self.headers.get('Host', 'localhost')
-        prefix = self.headers.get('X-Forwarded-Prefix', '/wizard-connectors').rstrip('/')
-        if not re.fullmatch(r'(?:/[A-Za-z0-9_-]+)*', prefix): prefix = '/wizard-connectors'
+        if not origin:
+            host = self.headers.get('Host', 'localhost')
+            origin = ('http://' if host.split(':')[0] in ('localhost', '127.0.0.1') else 'https://') + host
+        prefix = self.headers.get('X-Forwarded-Prefix', '/connected-accounts').rstrip('/')
+        if not re.fullmatch(r'(?:/[A-Za-z0-9_-]+)*', prefix): prefix = '/connected-accounts'
         return origin + prefix + '/api/google/callback'
 
     def calendar_service(self, path, data=None):
@@ -230,6 +232,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(202,jobs.create(data["thread"],data["request_id"]))
             if path.startswith("/api/cancel/") and not data:
                 return self.send(200,jobs.cancel(path.rsplit("/",1)[1]))
+            if path == '/api/google/agreements':
+                if set(data) != {'agreements', 'version', 'country'}: raise ValueError()
+                return self.send(200,broker.call('save_agreements', **data))
             if path == '/api/google/client' and set(data) == {'client_id','client_secret','redirect_uri'}:
                 return self.send(200,broker.call('save_client',**data))
             if path in ('/api/google/connect','/api/google/reconnect') and set(data) <= {'account','youtube','calendar'}:
@@ -264,7 +269,7 @@ class Handler(BaseHTTPRequestHandler):
     def mcp(self, request):
         ident, method, params = request.get("id"), request.get("method"), request.get("params",{})
         if method == "initialize":
-            result = {"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"wizard-connectors","version":"0.1.0"}}
+            result = {"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"wizard-connectors","version":"0.2.0-alpha.1"}}
         elif method == "tools/list":
             empty = {"type":"object","properties":{},"additionalProperties":False}
             result = {"tools":[{"name":"connector_status","description":"Content-free connector readiness. No private sources or results.","inputSchema":empty},
@@ -281,7 +286,7 @@ class Handler(BaseHTTPRequestHandler):
                     if name == 'google_app_setup_begin':
                         intake = broker.call('setup_begin', redirect_uri=content['redirect_uri'])
                         content = {'intake_url': 'http://wizard-connectors-calendar:8799/api/google/setup/intake#' + intake['token'],
-                                   'expires_in': intake['expires_in'], 'redirect_uri': content['redirect_uri']}
+                                   'expires_in': intake['expires_in'], 'redirect_uri': content['redirect_uri'], 'agreements': content['agreements']}
                 except Denied as e: content = {'error': str(e)}
             elif name == "summary_job_status" and isinstance(args,dict) and set(args) == {"job_id"}:
                 try: content = jobs.get(args["job_id"])

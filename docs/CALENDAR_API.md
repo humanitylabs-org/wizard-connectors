@@ -9,7 +9,8 @@ and `WIZARD_GRANTS_FILE=/wizard/grants.json` into the app services. The applicat
 recipe does not declare a grants mount. The UI verifies the grant; the read-only
 directory preserves atomic replacement/revocation visibility. Ingress is `is_main`
 with `internal_port: 8799`: WAM must publish that service, not the internal UI,
-as `provider_endpoints["wizard-connectors"]`. Consumers use that endpoint first.
+as `provider_endpoints["connected-accounts"]` on fresh installs (the legacy
+`wizard-connectors` key can remain on existing installs). Consumers use that endpoint first.
 No host port is needed for app-to-app access.
 
 Every request requires `X-Wizard-Grant: <Calendar's key>`. The provider hashes
@@ -26,11 +27,19 @@ File shape (provider has hashes, not caller keys):
 {"outgoing": {}, "incoming": [{"from": "wizard-calendar", "sha256": "<64 lowercase hex>"}], "provider_endpoints": {}, "enforce": true}
 ```
 
+## Fresh Calendar compatibility and owner grants
+
+Connected accounts declares `provides: [connector-status, simulated-private-summary, calendar-source]` under canonical ID `connected-accounts` (legacy ID `wizard-connectors` is a rename alias). Its view serves `/` upstream; the gateway mounts it at `/connected-accounts/`. There is deliberately no provider-side `grants:` frontmatter: WAM's compatibility edge is declared by the consumer and the owner, not minted by this provider.
+
+The Calendar consumer must keep `id: wizard-calendar` and declare **`uses: [connected-accounts]`**, or **`uses: [calendar-source]`** with the `calendar-source` slot assigned to Connected accounts. WAM can then propose/approve the Calendar → Connected accounts connection according to owner policy; an owner-denied connection stays denied. Calendar reads its matching `outgoing["connected-accounts"]` or `outgoing["slot:calendar-source"]` key, uses `provider_endpoints["connected-accounts"]` first (legacy installs may retain `provider_endpoints["wizard-connectors"]`), and sends `X-Wizard-Grant`. The provider requires the incoming hash row with `from: "wizard-calendar"` even in report-only mode. An account still needs separate Google read-only permission and the owner's Calendar binding.
+
+Checked upstream Calendar main `650bdd74ebe261c97c908b82e8bb3997d15d210f`: its manifest has `uses: []` and currently describes iCal/snapshot import. A new installation of that revision does **not** automatically declare this broker connection. Its owner must add the declaration and broker API integration; this change does not modify or deploy Calendar. Reference contract: wizard-os `spec/PERMISSIONS.md` at main `375a0129699cfb53ffbaca2a27bbb1716c8c1524`.
+
 ## Exact wire contracts
 
 `GET /service/calendar/status` (no body):
 ```json
-{"client_configured": true, "accounts": [{"account": "google-<opaque-id>", "email": "owner@example.com", "calendar_allowed": true, "status": "active"}], "setup_url": "/wizard-connectors/"}
+{"client_configured": true, "accounts": [{"account": "google-<opaque-id>", "email": "owner@example.com", "calendar_allowed": true, "status": "active"}], "setup_url": "/connected-accounts/"}
 ```
 `calendar_allowed` requires an active account, Calendar scope, owner-approved
 Calendar binding and an enabled/configured broker. Account status is `active` or

@@ -55,6 +55,13 @@ button:active, .google-continue:active { transform:translateY(1px); }
 .google-progress { margin-top:24px; }
 .google-done { display:flex; gap:12px; align-items:center; min-height:48px; margin-block:24px; }
 .google-done input { width:20px; min-height:20px; height:20px; flex:none; margin:0; }
+.google-agreements { max-inline-size:66ch; }
+.google-agreement-row { border-bottom:1px solid var(--wz-border); padding-block:12px; }
+.google-agreement-row .google-done { margin:0; cursor:pointer; line-height:1.5; }
+.google-agreement-row .google-link { min-height:44px; display:flex; align-items:center; margin:0 0 0 32px; }
+.google-agreements > button { margin-top:20px; }
+.google-agreements input[type="checkbox"] { accent-color:var(--wz-accent); }
+.google-agreements select option { background:var(--wz-base); color:var(--wz-text); }
 .google-uri { font:inherit; resize:vertical; overflow-wrap:anywhere; min-height:110px; line-height:1.5; }
 .wz-label { display:block; margin-block:16px; }
 .wz-input { width:100%; }
