@@ -110,10 +110,18 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(self.req('/api/google/disconnect',{'account':aid})[1]['provider_revocation'],'revoked')
         self.assertTrue(self.fake.revoked);self.assertEqual(Broker(self.config,self.fake).status()['accounts'],[])
     def test_state_browser_expiry_replay_denial(self):
-        p=self.start();self.assertEqual(self.req('/api/google/callback?state='+p['state']+'&code=x',owner=False,cookie='connectors_oauth=wrong')[0],400)
-        self.assertEqual(self.finish(p)[0],200);self.assertEqual(self.finish(p)[0],400)
+        # Started in the Wizard app, finished in the phone's own browser: no shared cookie, still connects once.
+        p=self.start();self.assertEqual(self.req('/api/google/callback?'+urlencode({'state':p['state'],'code':'FAKE_CODE'}),owner=False,headers={'Sec-Fetch-Site':'cross-site'})[0],200)
+        self.assertEqual(self.finish(p)[0],400)
+        self.assertEqual(self.req('/api/google/callback?state=unknown-state&code=x',owner=False)[0],400)
         p=self.start();self.b.pending[p['state']]['expires']=0;self.assertEqual(self.finish(p)[0],400)
         p=self.start();self.assertEqual(self.finish(p,error='access_denied')[0],400);self.assertEqual(self.finish(p)[0],400)
+    def test_sign_in_link_lasts_a_day_for_async_owners(self):
+        # James works asynchronously: a sign-in link must not die within minutes.
+        p=self.start();left=self.b.pending[p['state']]['expires']-time.time()
+        self.assertGreaterEqual(left,86000)
+        self.b.pending[p['state']]['expires']=time.time()+3*3600  # three hours later: still fine
+        self.assertEqual(self.finish(p)[0],200)
     def test_overlapping_sign_in_windows_share_one_browser_binding(self):
         first=self.start();cookie=self.cookie
         code,res,h=self.req('/api/google/connect',{'youtube':True,'account':None},cookie=cookie);self.assertEqual(code,200)
@@ -124,8 +132,8 @@ class BrokerHTTPTests(unittest.TestCase):
     def test_callback_failure_explains_reason_and_keeps_binding(self):
         p=self.start();code,body,h=self.finish(p,error='access_denied')
         self.assertEqual(code,400);self.assertIn('You cancelled',body);self.assertNotIn('{{REASON}}',body);self.assertIsNone(h.get('Set-Cookie'))
-        p=self.start();code,body,_=self.req('/api/google/callback?state='+p['state']+'&code=x',owner=False,cookie='connectors_oauth=wrong')
-        self.assertEqual(code,400);self.assertIn('out of date',body)
+        code,body,_=self.req('/api/google/callback?state=never-issued&code=x',owner=False,cookie='connectors_oauth=wrong')
+        self.assertEqual(code,400);self.assertIn('Tap Connect again for a fresh one',body)
     def test_nonce_issuer_audience_signature_and_subject_checks(self):
         for bad in ({'nonce':'wrong'},{'iss':'https://attacker.invalid'},{'aud':'wrong'},{'azp':'wrong'},{'exp':1},{'sub':''}):
             with self.subTest(bad=bad):

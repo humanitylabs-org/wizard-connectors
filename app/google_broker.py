@@ -25,6 +25,8 @@ YOUTUBE = 'https://www.googleapis.com/auth/youtube.readonly'
 CALENDAR = 'https://www.googleapis.com/auth/calendar.readonly'
 SCOPES = IDENTITY | {YOUTUBE, CALENDAR}
 MAX_PAGES = 3
+# Owners work asynchronously: a sign-in link stays usable for a day, not minutes.
+SIGN_IN_WINDOW = 86400
 MAX_OUTPUT_BYTES = 2 * 1024 * 1024
 AUTH = 'https://accounts.google.com/o/oauth2/v2/auth'
 
@@ -273,13 +275,13 @@ class Broker:
             scopes = IDENTITY | ({YOUTUBE} if youtube else set()) | ({CALENDAR} if calendar else set())
             if account: scopes |= set(self.state['accounts'][account]['scopes'])
             self.pending[state] = {'browser': hashlib.sha256(browser.encode()).hexdigest(), 'verifier': verifier,
-                                   'nonce': nonce, 'expires': time.time()+600, 'account': account, 'scopes': sorted(scopes)}
+                                   'nonce': nonce, 'expires': time.time()+SIGN_IN_WINDOW, 'account': account, 'scopes': sorted(scopes)}
             params = {'client_id': self.client()[0]['client_id'], 'redirect_uri': self.client()[0]['redirect_uri'],
                       'response_type': 'code', 'scope': ' '.join(sorted(scopes)), 'state': state, 'nonce': nonce,
                       'access_type': 'offline', 'prompt': 'consent select_account', 'include_granted_scopes': 'true',
                       'code_challenge': base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('='),
                       'code_challenge_method': 'S256'}
-            return {'authorization_url': AUTH+'?'+urlencode(params), 'expires_in': 600}
+            return {'authorization_url': AUTH+'?'+urlencode(params), 'expires_in': SIGN_IN_WINDOW}
     def _tokens(self, value, scopes):
         if value.get('token_type', '').lower() != 'bearer' or not isinstance(value.get('access_token'), str): raise Denied('invalid_provider_grant')
         got = set(value.get('scope', '').split())
@@ -294,7 +296,9 @@ class Broker:
         with self.lock:
             self._ready()
             p = self.pending.get(state)
-            if not p or p['expires'] <= time.time() or not hmac.compare_digest(p['browser'], hashlib.sha256(browser.encode()).hexdigest()):
+            # The owner may tap Connect in the Wizard app and finish in their phone's own browser,
+            # so the flow is bound by the owner-minted, single-use state (plus PKCE and nonce), not a cookie.
+            if not p or p['expires'] <= time.time():
                 raise Denied('invalid_oauth_state')
             del self.pending[state]  # one use, including denial/provider failure
             if error: raise Denied('consent_denied')

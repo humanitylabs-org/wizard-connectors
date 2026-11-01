@@ -38,7 +38,7 @@ def google_status():
 
 CALLBACK_REASONS = {
     'consent_denied': 'You cancelled on Google’s screen, so nothing was connected. That’s fine: tap Connect again whenever you’re ready.',
-    'invalid_oauth_state': 'This sign-in window had gone out of date: it was open longer than 10 minutes, or it was started before Connected accounts restarted. Tap Connect again for a fresh one.',
+    'invalid_oauth_state': 'This sign-in link was already used, is more than a day old, or was started before Connected accounts was updated. Tap Connect again for a fresh one.',
     'scope_consent_required': 'Google didn’t pass on Calendar access. Tap Connect again and leave “See your calendars” ticked on Google’s screen.',
     'reauth_required': 'Google didn’t confirm this sign-in. Tap Connect again; if it happens twice, tell your wizard.',
     '_': 'Something went wrong while finishing the sign-in. Tap Connect again; if it happens twice, tell your wizard.',
@@ -130,8 +130,7 @@ class Handler(BaseHTTPRequestHandler):
                 if any(len(v)!=1 for v in q.values()): raise ValueError()
                 cookies=SimpleCookie(); cookies.load(self.headers.get('Cookie',''))
                 binding=cookies.get('connectors_oauth')
-                if not binding: raise Denied('invalid_oauth_state')
-                broker.call('finish', state=q.get('state',[''])[0],browser=binding.value,
+                broker.call('finish', state=q.get('state',[''])[0],browser=binding.value if binding else '',
                             code=q.get('code',[None])[0],error=q.get('error',[None])[0])
             except (Denied,ValueError) as e:
                 reason=str(e) if isinstance(e,Denied) else 'invalid_callback'
@@ -241,7 +240,7 @@ class Handler(BaseHTTPRequestHandler):
                 browser=prior.value if prior and re.fullmatch(r'[A-Za-z0-9_-]{43}',prior.value) else secrets.token_urlsafe(32)
                 value=broker.call('start', browser=browser,account=data.get('account'),youtube=data.get('youtube',False),calendar=data.get('calendar',False))
                 secure='; Secure' if any(o.startswith('https:') for o in ORIGINS) else ''
-                return self.send(200,value,cookie=f'connectors_oauth={browser}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600{secure}')
+                return self.send(200,value,cookie=f'connectors_oauth={browser}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400{secure}')
             operations={'/api/calendar/bind':('calendar_bind',{'account','consent'}),'/api/music/bind':('bind',{'account','consent'}),'/api/music/unlink':('unlink',set()),
                         '/api/google/disconnect':('disconnect',{'account'}),'/api/music/catalog':('catalog',{'account','video_id'}),
                         '/api/music/audio-probe':('audio_probe',{'video_id'})}
