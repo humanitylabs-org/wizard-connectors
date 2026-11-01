@@ -1,118 +1,123 @@
-/* Run only on the queued forum worker. No Google navigation or owner-data writes. */
-const fs=require('fs'),path=require('path'),assert=require('assert');
-const {chromium,devices}=require('/srv/work/provider-signin-browser/node_modules/playwright');
+/* Forum worker only. Standalone candidate pages + synthetic API/skin fixtures.
+ * Every request is fulfilled or aborted: no live shell, Google, or owner writes.
+ * Run: node qa/google_connect_ux.cjs <source> <evidence-dir>
+ */
+const fs=require('fs'),path=require('path'),assert=require('node:assert/strict');
+let playwright;try{playwright=require('playwright');}catch{playwright=require('/srv/work/provider-signin-browser/node_modules/playwright');}
+const {chromium,devices}=playwright;
 const source=path.resolve(process.argv[2]||'.'),out=path.resolve(process.argv[3]||'evidence');
-const liveOnly=process.argv.includes('--live');
-const origin='https://wizard.tailc0f369.ts.net';
-const checks=[],errors=[],requests=[];let mode='baseline',fixture=null,stateError=false,connectMode='real',delay=0,connectCalls=0,realStarts=0;
+const origin='https://connected-accounts.fixture.invalid',base=origin+'/connected-accounts/';
+const checks=[],errors=[],writes=[],blocked=[],screenshots=[];
+const read=name=>fs.readFileSync(path.join(source,'web',name),'utf8');
+const calendar='https://www.googleapis.com/auth/calendar.readonly',youtube='https://www.googleapis.com/auth/youtube.readonly';
+const reason=fs.readFileSync(path.join(source,'app/server.py'),'utf8').match(/'consent_denied': '([^']+)'/)[1];
+const initial=()=>({google:{client_configured:true,client_source:'saved',client_id:'fixture.apps.googleusercontent.com',redirect_uri:'https://callback.fixture.invalid/api/google/callback',accounts:[{id:'fixture-account',email:'calendar-demo@example.invalid',status:'active',offline:true,scopes:['openid','email',calendar]}],calendar_binding:{accounts:['fixture-account']},bindings:[],music:{state:'unbound'},blocker:null}});
+let fixture=initial(),connectMode='fixture',delay=0,bindDelay=0,bindError=false,stateError=false;
 fs.mkdirSync(out,{recursive:true});
-function check(name,ok,detail){checks.push({name,ok:!!ok,...(detail?{detail}: {})});console.log((ok?'PASS ':'FAIL ')+name,Math.round(performance.now()/1000)+'s');assert(ok,name);}
-function read(name){return fs.readFileSync(path.join(source,'web',name));}
-async function appFrame(page){const end=Date.now()+90000;let last;while(Date.now()<end){try{const loc=page.locator('iframe[src*="/connected-accounts/"]:visible').last();if(!await loc.count()){await page.waitForTimeout(3000);if(!await loc.count())await page.evaluate(()=>__wos.openApp({id:'connected-accounts',kind:'wizard',url:'/connected-accounts/',name:'Connected accounts'}));}await loc.waitFor({timeout:20000});const fr=await (await loc.elementHandle()).contentFrame();if(fr){await fr.waitForSelector('#google-row',{timeout:15000});await page.waitForTimeout(500);if(!fr.isDetached())return fr;}}catch(e){last=e;}await page.waitForTimeout(500);}/* shell may swap the iframe while opening; retry on detach */await page.screenshot({path:path.join(out,'frame-failure.png')}).catch(()=>{});throw last||new Error('connected accounts frame');}
-(async()=>{const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
-try{
- const ctx=await browser.newContext({...devices['Pixel 5'],viewport:{width:390,height:844},permissions:['clipboard-read','clipboard-write']});
- const routeHandler=async route=>{const req=route.request(),u=new URL(req.url());
-  if(!['https:', 'about:'].includes(u.protocol)||u.hostname!==new URL(origin).hostname){requests.push({blocked:u.hostname});return route.abort();}
-  const prefix=u.pathname.startsWith('/connected-accounts/')?'/connected-accounts/':u.pathname.startsWith('/wizard-connectors/')?'/wizard-connectors/':null;
-  if(!prefix)return route.continue();const rel=u.pathname.slice(prefix.length);
-  if(rel.startsWith('api/')&&req.method()!=='GET'){
-   if(fixture&&rel==='api/google/client')return route.fulfill({status:503,contentType:'application/json',body:'{"error":"local_storage_unavailable"}'});
-   if(fixture&&rel==='api/calendar/bind'){const d=req.postDataJSON();fixture.google.calendar_binding={accounts:d.consent?[d.account]:[]};return route.fulfill({contentType:'application/json',body:'{"ok":true}'});}
-   if(rel==='api/google/connect'){
-    connectCalls++;const payload=req.postDataJSON();check('connect asks read-only Calendar without granting service use',payload.calendar===true&&payload.youtube===false&&payload.account===null);
-    if(delay)await new Promise(r=>setTimeout(r,delay));
-    if(connectMode==='real'){realStarts++;check('at most one real broker start, no provider call',realStarts===1);return route.continue();}
-    if(connectMode==='error')return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'broker_unavailable'})});
-    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({authorization_url:connectMode==='unsafe'?'https://evil.invalid/':'https://accounts.google.com/o/oauth2/v2/auth?state=FIXTURE_ONLY'})});
-   }
-   requests.push({blockedWrite:rel});return route.fulfill({status:403,contentType:'application/json',body:'{"error":"qa_write_fence"}'});
+function check(name,ok=true){assert(ok,name);checks.push({name,ok:true});console.log('PASS '+name);}
+// QA-only bridge for standalone pages; production WizardApp and appearance transport
+// are unchanged. Palettes are explicit fixture tokens, not live-shell skin proof.
+const bridge=`window.WizardApp={ready(){},back:{register(x){window.__qaBack=x.back},push(fn){window.__qaOverlayBack=fn;return {release(){window.__qaOverlayBack=null}}}},update:{hold(){return {release(){}}}}};`;
+const palettes={
+ nebula:{scheme:'dark',skin:'nebula',tokens:{base:'#05030c',canvas:'#05030c',text:'#f3efff','text-secondary':'#b9b0d8','text-muted':'#a59abf',border:'rgba(205,190,255,.24)',surface:'rgba(243,239,255,.06)','surface-raised':'rgba(243,239,255,.10)',accent:'#b99bff','on-accent':'#160b32','accent-soft':'rgba(143,99,255,.16)',panel:'#191225',radius:'14px','radius-pill':'20px'}},
+ light:{scheme:'light',skin:'signal',tokens:{base:'#faf8fd',canvas:'#faf8fd',text:'#1a1933','text-secondary':'#484560','text-muted':'#66617a',border:'#d4cfde',surface:'rgba(26,25,51,.04)','surface-raised':'rgba(26,25,51,.08)',accent:'#6844aa','on-accent':'#ffffff','accent-soft':'rgba(104,68,170,.10)',panel:'#faf8fd',radius:'2px','radius-pill':'2px'}}
+};
+async function skin(p,name){await p.evaluate(x=>{const h=document.documentElement;h.dataset.skin=x.skin;h.dataset.colorScheme=x.scheme;for(const [k,v]of Object.entries(x.tokens))h.style.setProperty('--wz-'+k,v);},palettes[name]);}
+async function capture(p,name,label){
+ await skin(p,name);await p.locator('main').waitFor();
+ const fit=await p.evaluate(()=>({width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth,scheme:document.documentElement.dataset.colorScheme}));
+ check(label+' '+name+' fits viewport',!fit.overflow&&fit.width===p.viewportSize().width);
+ const file=label+'-'+name+'.png';await p.screenshot({path:path.join(out,file),fullPage:true});screenshots.push(file);
+}
+const csp="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'";
+async function routeHandler(route){
+ const req=route.request(),u=new URL(req.url());
+ if(u.origin!==origin){blocked.push(u.hostname);return route.abort();}
+ const json=(body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+ if(u.pathname==='/wizard-os-home/core/app-client.js')return route.fulfill({contentType:'application/javascript',body:bridge});
+ const rel=u.pathname.slice('/connected-accounts/'.length);
+ if(!u.pathname.startsWith('/connected-accounts/')){blocked.push(u.pathname);return route.abort();}
+ if(rel==='api/state')return stateError?json({error:'service_unavailable'},503):json(fixture);
+ if(rel.startsWith('api/')&&req.method()!=='GET'){
+  const data=req.postDataJSON();writes.push({path:rel,data});
+  if(rel==='api/google/connect'){
+   if(delay)await new Promise(r=>setTimeout(r,delay));
+   if(connectMode==='error')return json({error:'broker_unavailable'},503);
+   return json({authorization_url:connectMode==='unsafe'?'https://evil.invalid/':'https://accounts.google.com/o/oauth2/v2/auth?state=FIXTURE_ONLY'});
   }
-  if(stateError&&rel==='api/state')return route.fulfill({status:503,contentType:'application/json',body:'{"error":"service_unavailable"}'});
-  if(fixture&&rel==='api/state')return route.fulfill({contentType:'application/json',body:JSON.stringify(fixture)});
-  if(mode==='candidate'&&!liveOnly){
-   const files={'':'index.html','app.js':'app.js','boot.js':'boot.js','styles.css':'styles.css','wizard-ui.css':'wizard-ui.css','privacy':'privacy.html','google-callback.js':'google-callback.js'};
-   if(files[rel])return route.fulfill({contentType:rel.endsWith('.js')?'application/javascript':rel.endsWith('.css')?'text/css':'text/html',body:read(files[rel])});
+  if(rel==='api/calendar/bind'){
+   if(bindDelay)await new Promise(r=>setTimeout(r,bindDelay));
+   if(bindError)return json({error:'fixture_write_failure'},503);
+   const ids=new Set(fixture.google.calendar_binding.accounts);data.consent?ids.add(data.account):ids.delete(data.account);fixture.google.calendar_binding.accounts=[...ids];return json({ok:true});
   }
-  return route.continue();
- };
- await ctx.route('**/*',routeHandler);
- const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));
- await p.goto(origin+'/wizard-os-home/?shell=phone',{waitUntil:'domcontentloaded'});
- await p.waitForFunction(()=>window.__wos&&window.WosSkin,{timeout:90000});
- check('actual phone shell',await p.evaluate(()=>document.documentElement.dataset.shell==='phone'));
- await p.evaluate(()=>__wos.openApp({id:'connected-accounts',kind:'wizard',url:'/connected-accounts/',name:'Connected accounts'}));
- // Frame URL can still be about:blank when the iframe element appears; take the element's own frame.
- let f=await appFrame(p);
- const originalSkin=await p.evaluate(()=>WosSkin.get?.()||null);
- async function settle(){await p.evaluate(async()=>{await Promise.all(document.getAnimations().filter(a=>Number.isFinite(a.effect?.getTiming().iterations)&&a.playState==='running').map(a=>a.finished.catch(()=>{})));});await p.waitForTimeout(650);}
- const tokens={};let identity=null;
- async function shot(skin,label){await p.evaluate(x=>WosSkin.set(x),skin);await settle();
-  const v=await f.evaluate(()=>({id:window.__googleQAId||(window.__googleQAId=crypto.randomUUID()),skin:document.documentElement.dataset.skin,base:getComputedStyle(document.documentElement).getPropertyValue('--wz-base').trim(),ink:getComputedStyle(document.body).color,width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth}));
-  check(label+' '+skin+' is hosted, phone width, no horizontal overflow',v.width===390&&!v.overflow&&!!v.base,v);
-  tokens[skin]=v.base+'|'+v.ink;if(identity)check(label+' keeps document on live skin switch',v.id===identity);else identity=v.id;
-  await p.screenshot({path:path.join(out,label+'-'+skin+'.png')});
+  if(rel==='api/google/client')return json({error:'local_storage_unavailable'},503);
+  if(rel==='api/google/disconnect'){fixture.google.accounts=fixture.google.accounts.filter(a=>a.id!==data.account);return json({ok:true});}
+  if(rel==='api/music/bind'){fixture.google.bindings=[{account:data.account}];return json({ok:true});}
+  if(rel==='api/music/unlink'){fixture.google.bindings=[];return json({ok:true});}
+  if(rel==='api/music/catalog')return json({items:[{title:'Fixture song'}]});
+  throw Error('Unexpected fixture write: '+rel);
  }
- async function pair(label){for(const skin of ['nebula','signal'])await shot(skin,label);check(label+' live skin colours change',tokens.nebula!==tokens.signal,tokens);}
- if(!liveOnly){await pair('before-root-live');await f.click('#google-row');await f.getByRole('button',{name:'Connect Google',exact:true}).waitFor();await pair('before-google-live');}
- mode='candidate';identity=null;await f.goto(origin+'/connected-accounts/');await f.waitForSelector('#google-row');
- check('root gives direct next action',await f.getByRole('button',{name:'Connect your Google account',exact:true}).isVisible());check('Try it out retains Practice a private summary',await f.getByRole('button',{name:/Practice a private summary/}).isVisible()&&await f.getByText('Try it out',{exact:true}).isVisible());await pair((liveOnly?'live':'candidate')+'-root');
- await f.getByRole('button',{name:'Manage Google settings',exact:true}).click();
- check('clear two sections',await f.getByRole('heading',{name:'Your Google app',exact:true}).isVisible()&&await f.getByRole('heading',{name:'Your Google accounts',exact:true}).isVisible());
- check('technical extras collapsed',await f.locator('details[open]').count()===0);await pair((liveOnly?'live':'candidate')+'-google-empty');
- stateError=true;await f.getByRole('button',{name:'Check accounts',exact:true}).click();await f.getByRole('heading',{name:'Could not check accounts',exact:true}).waitFor();stateError=false;await f.locator('#dialog-close').click();
- // Real broker creates a URL only. Every request to accounts.google.com is aborted before network.
- const before=connectCalls;await f.getByRole('button',{name:'← Back',exact:true}).click();await f.getByRole('button',{name:'Connect your Google account',exact:true}).click();
- await f.getByRole('heading',{name:'Finish signing in',exact:true}).waitFor({timeout:20000});
- check('real broker start once',connectCalls===before+1&&realStarts===1);await p.waitForTimeout(150);check('one tap navigates its popup to Google before network fence',requests.some(x=>x.blocked==='accounts.google.com'));
- const link=await f.locator('.google-continue').getAttribute('href');check('real generated Google link is usable without exposing it',new URL(link).origin==='https://accounts.google.com');
- await pair((liveOnly?'live':'candidate')+'-waiting-real-broker');
- await f.getByRole('button',{name:'Cancel sign-in',exact:true}).click();
- // Fixture-only failure and throttled-backend proof. Live state and permissions remain untouched.
- connectMode='error';delay=5000;const t=Date.now();await f.getByRole('button',{name:'Connect a Google account',exact:true}).click();
- await f.getByRole('button',{name:'Opening Google…',exact:true}).waitFor({timeout:800});const pendingCount=connectCalls;await f.evaluate(()=>authorize());check('duplicate taps cannot create two sign-in requests',connectCalls===pendingCount);
- check('five-second backend still paints immediate disabled feedback',Date.now()-t<1000&&await f.getByRole('button',{name:'Opening Google…',exact:true}).isDisabled());
- await pair('fixture-pending');await f.getByRole('heading',{name:'Couldn’t start Google sign-in',exact:true}).waitFor({timeout:10000});
- check('plain actionable failure',await f.getByRole('button',{name:'Try again',exact:true}).isVisible()&&!(await f.locator('#detail').innerText()).includes('broker_unavailable'));await pair('fixture-error');
- await f.getByRole('button',{name:'Back to accounts',exact:true}).click();
- connectMode='unsafe';delay=0;await f.getByRole('button',{name:'Connect a Google account',exact:true}).click();await f.getByRole('heading',{name:'Couldn’t start Google sign-in',exact:true}).waitFor();check('unsafe destination is rejected before navigation',await f.getByText('Google did not return a safe sign-in link.',{exact:false}).isVisible());await f.getByRole('button',{name:'Back to accounts',exact:true}).click();
- connectMode='fixture';delay=1500;await f.getByRole('button',{name:'Connect a Google account',exact:true}).click();await f.getByRole('button',{name:'Cancel',exact:true}).click();await p.waitForTimeout(1800);check('cancel fences late response and keeps account screen',await f.getByRole('heading',{name:'Your Google accounts',exact:true}).isVisible()&&await f.locator('.google-continue').count()===0);
- connectMode='fixture';delay=0;await f.evaluate(()=>{window.__realOpen=window.open;window.open=()=>null;});await f.getByRole('button',{name:'Connect a Google account',exact:true}).click();
- await f.getByRole('link',{name:'Continue to Google',exact:true}).waitFor();check('popup-blocked recovery stays inside viewport',await f.locator('.google-continue').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;}));check('popup-blocked browser keeps a visible recovery action',await f.getByText('Your browser kept the sign-in window closed.',{exact:false}).isVisible());await pair('fixture-popup-blocked');
- // Returning account is synthetic: fake scope, no Calendar binding, never writes to the owner broker.
- const liveState=await f.evaluate(async()=>await (await fetch('api/state')).json());fixture=structuredClone(liveState);fixture.google.accounts=[{id:'fixture-account',email:'calendar-demo@example.invalid',status:'connected',offline:true,scopes:['openid','email','https://www.googleapis.com/auth/calendar.readonly']}];fixture.google.state='connected';fixture.google.client_source='saved';fixture.google.calendar_binding={accounts:[]};
- await f.evaluate(()=>window.dispatchEvent(new Event('focus')));await f.getByRole('heading',{name:'calendar-demo@example.invalid',exact:true}).waitFor({timeout:10000});
- check('focus refresh shows account automatically with no Calendar binding',await f.getByRole('button',{name:'Show this account’s calendar in Calendar',exact:true}).isVisible());await pair('fixture-connected');
- p.once('dialog',d=>d.accept());await f.getByRole('button',{name:'Show this account’s calendar in Calendar',exact:true}).click();await f.getByRole('button',{name:'Stop showing this account in Calendar',exact:true}).waitFor();await f.getByRole('button',{name:'Stop showing this account in Calendar',exact:true}).click();await f.getByRole('button',{name:'Show this account’s calendar in Calendar',exact:true}).waitFor();
- await f.getByRole('button',{name:'Change',exact:true}).click();await f.getByLabel('Client ID',{exact:true}).fill('fixture.apps.googleusercontent.com');await f.getByLabel('Client secret',{exact:true}).fill('FIXTURE_ONLY_NOT_A_SECRET');
- check('credential step cannot bypass Save with Next',await f.getByRole('button',{name:'Next',exact:true}).count()===0);
- await f.getByRole('button',{name:'Save Google app',exact:true}).click();await f.getByRole('heading',{name:'Could not save Google app',exact:true}).waitFor();check('failed save leaves typed credentials and draft intact',await f.getByLabel('Client ID',{exact:true}).inputValue()==='fixture.apps.googleusercontent.com');await f.locator('#dialog-close').click();
- await p.evaluate(()=>WosSkin.set('nebula'));await settle();check('live skin switch preserves unsaved input',await f.getByLabel('Client ID',{exact:true}).inputValue()==='fixture.apps.googleusercontent.com');
- // Blank out synthetic secret before evidence. Back cancel preserves input; accepted discard never submits it.
- p.once('dialog',d=>{check('Discard unsaved Google app configuration? guard remains',d.message()==='Discard unsaved Google app configuration?');d.dismiss();});await f.getByRole('button',{name:'← Back',exact:true}).click();check('Back cancel preserves draft',await f.getByLabel('Client ID',{exact:true}).inputValue()==='fixture.apps.googleusercontent.com');p.once('dialog',d=>d.accept());await f.getByRole('button',{name:'← Back',exact:true}).click();
- // New unconfigured fixture proves setup and copy without Google Cloud interaction.
- fixture=structuredClone(liveState);fixture.google.client_configured=false;fixture.google.client_source=null;fixture.google.accounts=[];fixture.google.blocker='google_configuration_required';identity=null;await f.goto(origin+'/connected-accounts/');await f.click('#google-row');await pair('fixture-not-configured');
- await f.getByRole('button',{name:'Let your wizard set this up',exact:true}).click();check('handoff message exact',await f.locator('pre').innerText()==='Set up my Google app');await f.getByRole('button',{name:'Copy message',exact:true}).click();await f.locator('dialog[open]').waitFor();check('copy succeeds',await f.evaluate(async()=>await navigator.clipboard.readText())==='Set up my Google app');await pair('fixture-copy-modal');
- const box=await f.locator('dialog').boundingBox();await p.mouse.click(box.x+box.width/2,box.y-12);await f.locator('dialog[open]').waitFor({state:'detached'});
- await p.evaluate(()=>__wosNativeBack());await f.getByRole('button',{name:'Set it up myself',exact:true}).click();check('manual guide has real Next',await f.getByRole('button',{name:'Next',exact:true}).isDisabled());await f.locator('input[type="checkbox"]').check();await f.getByRole('button',{name:'Next',exact:true}).click();check('manual guide advances',await f.getByText('2 of 7',{exact:false}).isVisible());
- await p.evaluate(()=>__wosNativeBack());check('native Back stays in nested guide',await f.getByText('1 of 7',{exact:false}).isVisible());
- check('no page exceptions',errors.length===0,errors);check('no unintended owner writes',!requests.some(x=>x.blockedWrite),requests.filter(x=>x.blockedWrite));
- check('Google requests fenced before network',requests.every(x=>!x.blocked||x.blocked==='accounts.google.com'||x.blocked.endsWith('.invalid')),requests);
- // The shell's skin is browser-local; leave the QA browser in its first skin where possible.
- if(typeof originalSkin==='string')await p.evaluate(x=>WosSkin.set(x),originalSkin);
- await ctx.close();
- fixture=null;delay=0;
- const dc=await browser.newContext({viewport:{width:1440,height:1000},colorScheme:'dark'});await dc.route('**/*',routeHandler);
- for(const pass of (liveOnly?['candidate']:['baseline','candidate'])){
-  mode=pass;const d=await dc.newPage();d.on('pageerror',e=>errors.push(e.message));await d.goto(origin+'/wizard-os-home/?shell=desktop',{waitUntil:'domcontentloaded'});await d.waitForFunction(()=>window.__wos&&window.WosSkin,{timeout:90000});check('actual desktop shell',await d.evaluate(()=>document.documentElement.dataset.shell==='desktop'));
-  await d.evaluate(()=>__wos.openApp({id:'connected-accounts',kind:'wizard',url:'/connected-accounts/',name:'Connected accounts'}));const df=await appFrame(d);const full=d.getByRole('button',{name:'Full screen',exact:true});if(await full.count())await full.last().click();await d.waitForTimeout(900);
-  const bodyId=await df.evaluate(()=>window.__desktopQA=crypto.randomUUID());
-  for(const screen of ['root','google']){
-   if(screen==='google')await df.click(pass==='baseline'?'#google-row':'#google-manage');
-   const paints=[];for(const skin of ['nebula','signal']){await d.evaluate(x=>WosSkin.set(x),skin);await d.waitForTimeout(900);const v=await df.evaluate(()=>({id:window.__desktopQA,w:innerWidth,max:getComputedStyle(document.querySelector('.wz-app')).maxWidth,overflow:document.documentElement.scrollWidth>innerWidth,ink:getComputedStyle(document.body).color}));paints.push(v.ink);check('desktop '+pass+' '+screen+' '+skin+' keeps frame and fits',v.id===bodyId&&v.w>900&&!v.overflow,v);if(pass==='candidate')check('desktop app has no narrow outer cap',v.max==='none');await d.screenshot({path:path.join(out,(pass==='baseline'?'before':liveOnly?'live':'candidate')+'-desktop-'+screen+'-'+skin+'.png')});}check('desktop live skin switch recolours',paints[0]!==paints[1]);
-  }await d.close();
+ const files={'':'index.html','app.js':'app.js','boot.js':'boot.js','styles.css':'styles.css','wizard-ui.css':'wizard-ui.css','privacy':'privacy.html','google-callback.js':'google-callback.js','api/google/connected':'google-connected.html','api/google/error':'google-error.html'};
+ if(files[rel]){
+  const file=files[rel],body=read(file).replace('{{REASON}}',reason);
+  return route.fulfill({headers:{'Content-Security-Policy':csp},contentType:file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html',body});
  }
- mode='candidate';const standalone=await dc.newPage();await standalone.goto(origin+'/connected-accounts/');await standalone.locator('#google-row').waitFor();check('standalone defaults dark',await standalone.evaluate(()=>document.documentElement.dataset.colorScheme==='dark'));await standalone.screenshot({path:path.join(out,(liveOnly?'live':'candidate')+'-standalone-dark.png')});await dc.close();
- check('all captures have no page exceptions',errors.length===0,errors);
-}finally{await browser.close();fs.writeFileSync(path.join(out,'browser-receipt.json'),JSON.stringify({mode:liveOnly?'exact-live':'candidate-static-in-real-shell',checks,errors,realStarts,connectCalls,blocked:requests},null,2));}
+ blocked.push(rel);return route.abort();
+}
+(async()=>{
+ const browser=await chromium.launch({headless:true,...(process.env.QA_CHROME?{executablePath:process.env.QA_CHROME}:{}),args:['--no-sandbox']});
+ try{
+  const ctx=await browser.newContext({...devices['Pixel 5'],viewport:{width:390,height:844},permissions:['clipboard-read','clipboard-write']});await ctx.route('**/*',routeHandler);
+  const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));
+  const open=async()=>{await p.goto(base);await p.getByText('calendar-demo@example.invalid · Calendar on',{exact:true}).waitFor();};
+  await open();check('standalone fallback is dark',await p.locator('html').getAttribute('data-color-scheme')==='dark');
+  check('one provider card, no duplicate settings or practice card',await p.locator('#navigation button').count()===1&&!(await p.locator('#navigation').innerText()).match(/Practice|Try it out|Manage Google/));
+  for(const name of Object.keys(palettes))await capture(p,name,'home-connected');
+  await p.locator('#google-row').click();await p.locator('.google-status-pill').getByText('Connected',{exact:true}).waitFor();
+  check('active account is healthy, no contradictory status',!(await p.locator('#detail').innerText()).includes('needs attention'));
+  check('one email card, Calendar on, More collapsed',await p.locator('.google-account').count()===1&&await p.getByRole('switch').getAttribute('aria-checked')==='true'&&await p.locator('details[open]').count()===0);
+  check('one-time setup comes after accounts',await p.evaluate(()=>!!(document.querySelector('.google-connect').compareDocumentPosition(document.querySelector('.google-app-row'))&Node.DOCUMENT_POSITION_FOLLOWING)));
+  const identity=await p.evaluate(()=>window.__qaId=crypto.randomUUID());
+  for(const name of Object.keys(palettes)){await capture(p,name,'google-calendar-on');check('skin switch keeps account document',await p.evaluate(()=>window.__qaId)===identity);}
+  // Slow write: same-task state, disabled control, then readback and reusable switch.
+  bindDelay=5000;await p.getByRole('switch').evaluate(e=>{e.click();if(e.getAttribute('aria-checked')!=='false'||e.getAttribute('aria-busy')!=='true'||!e.disabled)throw Error('no immediate feedback');});
+  check('five-second write paints switch immediately');await p.locator('[role="switch"][aria-checked="false"]:not([aria-busy])').waitFor({timeout:10000});
+  assert.equal(await p.getByRole('switch').getAttribute('aria-checked'),'false');check('switch reconciles after readback',await p.getByRole('switch').isEnabled());bindDelay=0;
+  let before=writes.length;p.once('dialog',d=>d.dismiss());await p.getByRole('switch').click();check('Calendar enable needs consent',writes.length===before);
+  p.once('dialog',d=>d.accept());await p.getByRole('switch').click();await p.locator('[role="switch"][aria-checked="true"]:not([aria-busy])').waitFor();
+  bindError=true;await p.getByRole('switch').click();await p.getByRole('heading',{name:'Could not update Calendar',exact:true}).waitFor();check('failed switch rolls back',await p.getByRole('switch').getAttribute('aria-checked')==='true');await p.locator('#dialog-close').click();bindError=false;
+  stateError=true;await p.getByRole('button',{name:'Check accounts',exact:true}).click();await p.getByRole('heading',{name:'Could not check accounts',exact:true}).waitFor();await p.locator('#dialog-close').click();stateError=false;
+  fixture.google.accounts[0].status='reauth_required';await p.getByRole('button',{name:'Check accounts',exact:true}).click();await p.locator('.google-status-pill').getByText('Sign in again',{exact:true}).waitFor();check('reauthentication has plain status');fixture.google.accounts[0].status='active';
+  fixture.google.accounts[0].scopes=['openid','email'];await p.getByRole('button',{name:'Check accounts',exact:true}).click();await p.getByRole('button',{name:'Allow Calendar',exact:true}).waitFor();check('missing Calendar permission has Allow, not a switch',await p.getByRole('switch').count()===0);
+  await p.getByRole('button',{name:'Allow Calendar',exact:true}).click();await p.getByRole('heading',{name:'Finish signing in',exact:true}).waitFor();assert.deepEqual(writes.at(-1).data,{account:'fixture-account',youtube:false,calendar:true});check('Allow requests permission but does not grant app use');
+  await p.getByRole('button',{name:'Cancel sign-in',exact:true}).click();
+  // Disconnect stays behind More and requires an explicit confirmation.
+  await p.locator('.google-account > details > summary').click();before=writes.length;p.once('dialog',d=>d.dismiss());await p.getByRole('button',{name:'Disconnect',exact:true}).click();check('Disconnect cancellation sends no write',writes.length===before);
+  await p.getByRole('button',{name:'← Back',exact:true}).click();check('Back stays inside app home',await p.locator('#google-row').isVisible());
+  // Adding an account keeps the existing safe popup/return workflow.
+  await p.locator('#google-row').click();delay=5000;connectMode='error';await p.getByRole('button',{name:'Add another Google account',exact:true}).click();await p.getByRole('button',{name:'Opening Google…',exact:true}).waitFor({timeout:800});before=writes.length;await p.evaluate(()=>authorize());check('duplicate sign-in fenced while pending',writes.length===before);await p.getByRole('heading',{name:'Couldn’t start Google sign-in',exact:true}).waitFor({timeout:10000});check('sign-in failure offers retry',await p.getByRole('button',{name:'Try again',exact:true}).isVisible());await p.getByRole('button',{name:'Back to accounts',exact:true}).click();
+  delay=0;connectMode='unsafe';await p.getByRole('button',{name:'Add another Google account',exact:true}).click();await p.getByText('Google did not return a safe sign-in link.',{exact:false}).waitFor();check('unsafe provider destination rejected');await p.getByRole('button',{name:'Back to accounts',exact:true}).click();
+  delay=1200;connectMode='fixture';await p.getByRole('button',{name:'Add another Google account',exact:true}).click();await p.getByRole('button',{name:'Cancel',exact:true}).click();await p.waitForTimeout(1400);check('cancel fences late provider response',await p.locator('.google-continue').count()===0);
+  delay=0;await p.evaluate(()=>{window.open=()=>null;});await p.getByRole('button',{name:'Add another Google account',exact:true}).click();await p.getByRole('link',{name:'Continue to Google',exact:true}).waitFor();check('blocked popup offers safe recovery',new URL(await p.locator('.google-continue').getAttribute('href')).origin==='https://accounts.google.com');
+  fixture.google.accounts.push({id:'fixture-second',email:'second@example.invalid',status:'active',offline:true,scopes:['openid','email',calendar]});await p.evaluate(()=>window.dispatchEvent(new Event('focus')));await p.getByRole('heading',{name:'second@example.invalid',exact:true}).waitFor();check('return focus refreshes automatically');
+  fixture=initial();await p.getByRole('button',{name:'Check accounts',exact:true}).click();await p.getByRole('button',{name:'Change',exact:true}).click();await p.getByLabel('Client ID',{exact:true}).fill('fixture.apps.googleusercontent.com');await p.getByLabel('Client secret',{exact:true}).fill('FIXTURE_ONLY_NOT_A_SECRET');
+  check('credential step cannot bypass Save',await p.getByRole('button',{name:'Next',exact:true}).count()===0);await p.getByRole('button',{name:'Save Google app',exact:true}).click();await p.getByRole('heading',{name:'Could not save Google app',exact:true}).waitFor();await p.locator('#dialog-close').click();
+  await skin(p,'nebula');check('skin switch preserves unsaved form',await p.getByLabel('Client ID',{exact:true}).inputValue()==='fixture.apps.googleusercontent.com');p.once('dialog',d=>d.dismiss());await p.getByRole('button',{name:'← Back',exact:true}).click();check('Back cancel preserves draft',await p.getByLabel('Client ID',{exact:true}).isVisible());p.once('dialog',d=>d.accept());await p.getByRole('button',{name:'← Back',exact:true}).click();
+  fixture.google.client_configured=false;fixture.google.accounts=[];fixture.google.blocker='google_configuration_required';await p.goto(base);await p.locator('#google-row').click();await p.getByRole('button',{name:'Let your wizard set this up',exact:true}).click();await p.getByRole('button',{name:'Copy message',exact:true}).click();await p.locator('dialog[open]').waitFor();check('setup handoff message exact',await p.locator('pre').innerText()==='Set up my Google app');
+  const box=await p.locator('dialog').boundingBox();await p.mouse.click(box.x+box.width/2,box.y-10);await p.locator('dialog[open]').waitFor({state:'detached'});check('outside tap closes dialog');
+  await p.evaluate(()=>window.__qaBack());await p.getByRole('button',{name:'Set it up myself',exact:true}).click();await p.locator('input[type="checkbox"]').check();await p.getByRole('button',{name:'Next',exact:true}).click();await p.getByText('2 of 7',{exact:true}).waitFor();await p.evaluate(()=>window.__qaBack());await p.getByText('1 of 7',{exact:true}).waitFor();check('nested Back steps once without leaving app');
+  for(const [rel,label]of [['api/google/connected','google-connected'],['api/google/error','google-error']]){
+   await p.goto(base+rel);await p.getByRole('heading').waitFor();check(label+' has instructions, no nonworking navigation',await p.locator('button,a').count()===0);
+   if(label==='google-error')check('error reason replaced',await p.getByText(reason,{exact:true}).isVisible()&&!(await p.locator('main').innerText()).includes('{{REASON}}'));
+   for(const name of Object.keys(palettes))await capture(p,name,label);
+  }
+  // Wide layout uses the same controls, with no desktop-only rail or outer cap.
+  fixture=initial();await p.setViewportSize({width:1440,height:1000});await open();await p.locator('#google-row').click();for(const name of Object.keys(palettes))await capture(p,name,'desktop-google');
+  check('wide app has no outer width cap',await p.locator('.wz-app').evaluate(e=>getComputedStyle(e).maxWidth)==='none');
+  check('no browser exceptions',errors.length===0);check('all traffic fixture-only',blocked.every(h=>h==='accounts.google.com'));
+  check('eight requested mobile screen/skin captures',screenshots.filter(x=>!x.startsWith('desktop-')).length===8);
+  await ctx.close();
+ }finally{
+  await browser.close();fs.writeFileSync(path.join(out,'browser-receipt.json'),JSON.stringify({mode:'standalone-candidate-synthetic-api-and-skins',checks,errors,writes,blocked,screenshots,liveOwnerWrites:0},null,2)+'\n');
+ }
 })().catch(e=>{console.error(e.stack);process.exitCode=1;});
