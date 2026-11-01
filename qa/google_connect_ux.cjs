@@ -64,7 +64,7 @@ try{
  // Real broker creates a URL only. Every request to accounts.google.com is aborted before network.
  const before=connectCalls;await f.getByRole('button',{name:'← Back',exact:true}).click();await f.getByRole('button',{name:'Connect your Google account',exact:true}).click();
  await f.getByRole('heading',{name:'Finish signing in',exact:true}).waitFor({timeout:20000});
- check('real broker start once',connectCalls===before+1&&realStarts===1);
+ check('real broker start once',connectCalls===before+1&&realStarts===1);await p.waitForTimeout(150);check('one tap navigates its popup to Google before network fence',requests.some(x=>x.blocked==='accounts.google.com'));
  const link=await f.locator('.google-continue').getAttribute('href');check('real generated Google link is usable without exposing it',new URL(link).origin==='https://accounts.google.com');
  await pair((liveOnly?'live':'candidate')+'-waiting-real-broker');
  await f.getByRole('button',{name:'Cancel sign-in',exact:true}).click();
@@ -78,7 +78,7 @@ try{
  connectMode='unsafe';delay=0;await f.getByRole('button',{name:'Connect a Google account',exact:true}).click();await f.getByRole('heading',{name:'Couldn’t start Google sign-in',exact:true}).waitFor();check('unsafe destination is rejected before navigation',await f.getByText('Google did not return a safe sign-in link.',{exact:false}).isVisible());await f.getByRole('button',{name:'Back to accounts',exact:true}).click();
  connectMode='fixture';delay=1500;await f.getByRole('button',{name:'Connect a Google account',exact:true}).click();await f.getByRole('button',{name:'Cancel',exact:true}).click();await p.waitForTimeout(1800);check('cancel fences late response and keeps account screen',await f.getByRole('heading',{name:'Your Google accounts',exact:true}).isVisible()&&await f.locator('.google-continue').count()===0);
  connectMode='fixture';delay=0;await f.evaluate(()=>{window.__realOpen=window.open;window.open=()=>null;});await f.getByRole('button',{name:'Connect a Google account',exact:true}).click();
- await f.getByRole('link',{name:'Continue to Google',exact:true}).waitFor();check('popup-blocked browser keeps a visible recovery action',await f.getByText('Your browser kept the sign-in window closed.',{exact:false}).isVisible());await pair('fixture-popup-blocked');
+ await f.getByRole('link',{name:'Continue to Google',exact:true}).waitFor();check('popup-blocked recovery stays inside viewport',await f.locator('.google-continue').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;}));check('popup-blocked browser keeps a visible recovery action',await f.getByText('Your browser kept the sign-in window closed.',{exact:false}).isVisible());await pair('fixture-popup-blocked');
  // Returning account is synthetic: fake scope, no Calendar binding, never writes to the owner broker.
  const liveState=await f.evaluate(async()=>await (await fetch('api/state')).json());fixture=structuredClone(liveState);fixture.google.accounts=[{id:'fixture-account',email:'calendar-demo@example.invalid',status:'connected',offline:true,scopes:['openid','email','https://www.googleapis.com/auth/calendar.readonly']}];fixture.google.state='connected';fixture.google.client_source='saved';fixture.google.calendar_binding={accounts:[]};
  await f.evaluate(()=>window.dispatchEvent(new Event('focus')));await f.getByRole('heading',{name:'calendar-demo@example.invalid',exact:true}).waitFor({timeout:10000});
