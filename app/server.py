@@ -1,4 +1,5 @@
 """Human API and content-free MCP. Provider credentials live in a separate broker."""
+import hashlib
 import hmac
 import json
 import mimetypes
@@ -135,7 +136,8 @@ class Handler(BaseHTTPRequestHandler):
             except (Denied,ValueError) as e:
                 reason=str(e) if isinstance(e,Denied) else 'invalid_callback'
                 # Reason code only: never the state, code or cookie.
-                print(f'google_callback_denied reason={reason}',file=sys.stderr,flush=True)
+                ref=hashlib.sha256(q.get('state',[''])[0].encode()).hexdigest()[:8] if q.get('state') else '-'
+                print(f'google_callback_denied reason={reason} sign_in={ref}',file=sys.stderr,flush=True)
                 body=(ROOT/'web/google-error.html').read_text().replace('{{REASON}}',CALLBACK_REASONS.get(reason,CALLBACK_REASONS['_']))
                 # Keep the browser binding: another sign-in window from this browser may still be open.
                 return self.send(400,body.encode(),'text/html; charset=utf-8')
@@ -239,6 +241,8 @@ class Handler(BaseHTTPRequestHandler):
                 prior=jar.get('connectors_oauth')
                 browser=prior.value if prior and re.fullmatch(r'[A-Za-z0-9_-]{43}',prior.value) else secrets.token_urlsafe(32)
                 value=broker.call('start', browser=browser,account=data.get('account'),youtube=data.get('youtube',False),calendar=data.get('calendar',False))
+                started=parse_qs(urlsplit(value['authorization_url']).query).get('state',[''])[0]
+                print(f'google_sign_in_started sign_in={hashlib.sha256(started.encode()).hexdigest()[:8]}',file=sys.stderr,flush=True)
                 secure='; Secure' if any(o.startswith('https:') for o in ORIGINS) else ''
                 return self.send(200,value,cookie=f'connectors_oauth={browser}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400{secure}')
             operations={'/api/calendar/bind':('calendar_bind',{'account','consent'}),'/api/music/bind':('bind',{'account','consent'}),'/api/music/unlink':('unlink',set()),

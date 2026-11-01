@@ -116,6 +116,14 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(self.req('/api/google/callback?state=unknown-state&code=x',owner=False)[0],400)
         p=self.start();self.b.pending[p['state']]['expires']=0;self.assertEqual(self.finish(p)[0],400)
         p=self.start();self.assertEqual(self.finish(p,error='access_denied')[0],400);self.assertEqual(self.finish(p)[0],400)
+    def test_open_sign_in_link_survives_update_or_restart(self):
+        p=self.start()
+        # A deploy/restart between Connect and Google's return: a new broker process serves the callback.
+        self.s.shutdown();self.s.server_close();self.b=Broker(self.config,self.fake)
+        self.s=service('google',self.b);threading.Thread(target=self.s.serve_forever,daemon=True).start()
+        self.ui.broker=RPC('127.0.0.1',self.s.server_port,'b'*40)
+        self.assertEqual(self.finish(p)[0],200)
+        self.assertEqual(Broker(self.config,self.fake).pending,{})  # used once, gone after restart too
     def test_sign_in_link_lasts_a_day_for_async_owners(self):
         # James works asynchronously: a sign-in link must not die within minutes.
         p=self.start();left=self.b.pending[p['state']]['expires']-time.time()

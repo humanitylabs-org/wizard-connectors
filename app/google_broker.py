@@ -156,7 +156,9 @@ class Broker:
         self.state = self.store.load()
         self.state.setdefault('client', None)
         self.state.setdefault('calendar_binding', {'app':'calendar', 'accounts':[], 'operations':['calendar.list','events.list']})
-        self.pending = {}
+        # Pending sign-ins live in the encrypted store so an update or restart never voids a link the
+        # owner has open (they work asynchronously). Verifier and nonce stay encrypted at rest.
+        self.pending = {k:v for k,v in (self.state.get('pending_sign_ins') or {}).items() if v.get('expires',0) > time.time()}
         self.setup_pending = {}  # Digest-only, memory-only capabilities; restart invalidates all.
         self.lock = threading.RLock()
         # An installer replacing an env client is a replacement too. Never reuse
@@ -233,8 +235,8 @@ class Broker:
                 for a in new['accounts'].values(): a.update(status='reauth_required', access_token='', refresh_token='')
                 new['binding'] = None
                 new['calendar_binding']['accounts'] = []
-                self._commit(new)
                 self.pending.clear()
+                self._commit(new)
             self.setup_pending.clear()
             return self.client_status()
 
@@ -247,6 +249,7 @@ class Broker:
     def _ready(self):
         if self.gate(): raise Denied(self.gate())
     def _commit(self, state):
+        state['pending_sign_ins'] = self.pending
         state['client_fingerprint'] = self._fingerprint(state)
         self.store.save(state)
         self.state = state
@@ -276,6 +279,7 @@ class Broker:
             if account: scopes |= set(self.state['accounts'][account]['scopes'])
             self.pending[state] = {'browser': hashlib.sha256(browser.encode()).hexdigest(), 'verifier': verifier,
                                    'nonce': nonce, 'expires': time.time()+SIGN_IN_WINDOW, 'account': account, 'scopes': sorted(scopes)}
+            self._commit(self._copy())
             params = {'client_id': self.client()[0]['client_id'], 'redirect_uri': self.client()[0]['redirect_uri'],
                       'response_type': 'code', 'scope': ' '.join(sorted(scopes)), 'state': state, 'nonce': nonce,
                       'access_type': 'offline', 'prompt': 'consent select_account', 'include_granted_scopes': 'true',
@@ -301,6 +305,7 @@ class Broker:
             if not p or p['expires'] <= time.time():
                 raise Denied('invalid_oauth_state')
             del self.pending[state]  # one use, including denial/provider failure
+            self._commit(self._copy())
             if error: raise Denied('consent_denied')
             if not isinstance(code, str) or not 1 <= len(code) <= 4096: raise Denied('invalid_authorization_code')
             value = self.provider.request('token', form={'grant_type': 'authorization_code', 'code': code,
@@ -353,6 +358,7 @@ class Broker:
             # account. finish/start/disconnect share this lock (including token I/O).
             self.pending = {k:v for k,v in self.pending.items()
                             if v['account'] is not None and v['account'] != account}
+            new['pending_sign_ins'] = self.pending
             try:
                 self.provider.request('revoke', form={'token': token})
                 new['revocation'] = 'revoked'
