@@ -60,7 +60,7 @@ class FakeConsolePage:
         if country: self.items.append(FakeControl('combobox', 'Country', options=[FakeControl('option', 'United Kingdom', value='GB'), FakeControl('option', 'United States', value='US')]))
     def set_default_timeout(self, value): pass
     def set_default_navigation_timeout(self, value): pass
-    def get_by_role(self, role, name=None):
+    def get_by_role(self, role, name=None, exact=False):
         return FakeLocator(self, [x for x in self.items if x.role == role and (name is None or (name.search(x.name) if hasattr(name, 'search') else x.name == name))])
     def evaluate(self, expression, code): return {'GB': 'United Kingdom', 'US': 'United States'}[code]
 
@@ -165,8 +165,29 @@ def main():
                 with contextlib.redirect_stdout(output),contextlib.redirect_stderr(output):script.run(args,page)
                 assert json.loads(statefile.read_text())=={'project':pid}
                 assert fixture['creates']==1
-                page.goto('https://console.cloud.google.com/_fixture/terms')
-                rerun.gate();assert fixture['terms'] and fixture['terms_country']=='GB' and not fixture['marketing']
+                # Parse selectors in real Playwright/Chromium, not FakeLocator.
+                # Every supported literal must override the initial US country,
+                # including slash-bearing labels. No secret page dumps.
+                country_checks = []
+                for label in ('Country', 'Country/Region', 'Country or region'):
+                    page.goto('https://console.cloud.google.com/_fixture/terms')
+                    page.locator('select[name=country]').evaluate('(e, label) => e.parentElement.firstChild.textContent = label', label)
+                    rerun.gate()
+                    assert fixture['terms'] and fixture['terms_country'] == 'GB' and not fixture['marketing']
+                    country_checks.append(label)
+                for labels in ([], ['Country', 'Country'], ['Country', 'Country/Region'], ['Country or region changed']):
+                    page.goto('https://console.cloud.google.com/_fixture/terms')
+                    page.locator('label').filter(has=page.locator('select[name=country]')).evaluate('(e) => e.remove()')
+                    for label in labels:
+                        page.evaluate('label => { const l = document.createElement("label"); l.textContent = label; l.innerHTML += "<select><option>United States</option><option>United Kingdom</option></select>"; document.querySelector("form").prepend(l); }', label)
+                    try:
+                        rerun.gate()
+                        raise AssertionError('changed/ambiguous country accepted')
+                    except script.NeedsOwner as exc:
+                        assert str(exc) == 'country_control_changed'
+                    assert not page.get_by_role('checkbox', name='I agree to the Google Cloud Terms of Service', exact=True).is_checked()
+                    assert page.get_by_role('checkbox', name='Email updates', exact=True).is_checked()
+                    assert page.url.endswith('/_fixture/terms')
                 page.goto('https://console.cloud.google.com/_fixture/terms')
                 unrecorded=script.Console(page,agreements={**AGREEMENTS,'accepted':['api_terms','user_data_policy']})
                 try:unrecorded.gate();raise AssertionError('unrecorded terms bypassed')
@@ -176,7 +197,7 @@ def main():
                 try:rerun.gate();raise AssertionError('unknown terms bypassed')
                 except script.NeedsOwner:pass
                 assert SECRET not in output.getvalue() and ID not in output.getvalue()
-                print(json.dumps({'fixture':'FAKE Google Cloud console, native Chrome and real intake/RPC/store','result':'PASS','checks':['project create + existing reuse','Calendar API enable + readback','branding recorded user data policy','External audience publish + readback','Web client redirect and secret capture','direct deposit encrypted + status readback','idempotent existing client no duplicate','recorded Cloud terms and country','marketing left unticked','unrecorded and unknown terms fail closed','no credential stdout/stderr']}))
+                print(json.dumps({'fixture':'FAKE Google Cloud console, native Chrome and real intake/RPC/store','result':'PASS','country_labels':country_checks,'country_refusals':4,'checks':['project create + existing reuse','Calendar API enable + readback','branding recorded user data policy','External audience publish + readback','Web client redirect and secret capture','direct deposit encrypted + status readback','idempotent existing client no duplicate','recorded Cloud terms and country','marketing left unticked','unrecorded and unknown terms fail closed','no credential stdout/stderr']}))
             finally:browser.close()
     finally:t.tearDown()
 

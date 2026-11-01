@@ -280,11 +280,17 @@ class Console:
             if linked_ids != {'cloud_terms'}: raise NeedsOwner('unrecorded_google_agreement')
         elif not tasks:
             raise NeedsOwner('unrecorded_google_agreement')
-        country = self.p.get_by_role('combobox', name=re.compile(r'^Country(?:/Region| or region)?$', re.I))
-        if self.visible(agree) and 'cloud_terms' in (legal_ids | linked_ids) and not self.visible(country):
+        # Literal role names avoid Python regexes being serialized as invalid JS
+        # regex literals (notably the slash in Country/Region). Count every known
+        # label before selection so two different country labels also fail closed.
+        countries = [self.p.get_by_role('combobox', name=name, exact=True)
+                     for name in ('Country', 'Country/Region', 'Country or region')]
+        matches = [c for c in countries if c.count()]
+        if sum(c.count() for c in matches) > 1: raise NeedsOwner('country_control_changed')
+        country = matches[0] if matches else None
+        if self.visible(agree) and 'cloud_terms' in (legal_ids | linked_ids) and (country is None or not self.visible(country)):
             raise NeedsOwner('country_control_changed')
-        if self.visible(country):
-            if country.count() != 1: raise NeedsOwner('country_control_changed')
+        if country is not None and self.visible(country):
             code = recorded['country']
             country_name = self.p.evaluate("code => new Intl.DisplayNames(['en'], {type:'region'}).of(code)", code)
             if country.first.evaluate('(e)=>e.tagName') == 'SELECT':
@@ -292,7 +298,9 @@ class Console:
                 values = options.evaluate_all('(es)=>es.map(e=>e.value)')
                 if code in values: country.first.select_option(value=code)
                 else: country.first.select_option(label=country_name)
-            else: self.choose(r'^Country(?:/Region| or region)?$', country_name)
+            else:
+                country.first.click()
+                self.p.get_by_role('option', name=country_name, exact=True).click()
         for c in marketing: c.uncheck()
         for c in tasks: c.check()
         self.legal_checked = True

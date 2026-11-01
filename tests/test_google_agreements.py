@@ -91,6 +91,23 @@ class ConsoleAgreementTests(unittest.TestCase):
         self.assertTrue(page.submitted['I agree to the Google Cloud Terms of Service'])
         self.assertFalse(page.submitted['Email updates'])
 
+    def test_literal_country_names_and_ambiguity(self):
+        for label in ('Country', 'Country/Region', 'Country or region'):
+            with self.subTest(label=label):
+                page=fake.FakeConsolePage()
+                page.get_by_role('combobox').items[0].name=label
+                self.console(page).gate()
+                self.assertEqual(page.country,'GB')
+                self.assertFalse(page.submitted['Email updates'])
+        for labels in ([], ['Country', 'Country'], ['Country', 'Country/Region'], ['Country or region changed']):
+            with self.subTest(labels=labels):
+                page=fake.FakeConsolePage(country=False)
+                page.items.extend(fake.FakeControl('combobox', label) for label in labels)
+                with self.assertRaisesRegex(script.NeedsOwner,'country_control_changed'):self.console(page).gate()
+                self.assertIsNone(page.submitted)
+                self.assertFalse(page.get_by_role('checkbox').first.is_checked())
+                self.assertTrue(page.get_by_role('checkbox').nth(1).is_checked())
+
     def test_api_terms_and_user_data_policy_exact_checkbox_labels(self):
         for name in ('I agree to the Google APIs Terms of Service','I agree to the Google API Services: User Data Policy.',
                      'I agree to the Google APIs Terms of Service and the Google API Services User Data Policy'):
