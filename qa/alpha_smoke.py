@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import secrets
 import shlex
+import signal
 import subprocess
 import tempfile
 import time
@@ -78,4 +79,6 @@ print('PASS ingress health, owner/grant denial, public intake denial')'''
     print(json.dumps({'ok': True, 'checks': checks, 'cleanup_verified': True, 'live_owner_writes': 0}))
 
 
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
+    main()

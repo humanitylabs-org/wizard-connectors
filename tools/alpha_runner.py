@@ -8,6 +8,7 @@ from pathlib import Path
 import platform
 import re
 import shlex
+import signal
 import subprocess
 
 
@@ -22,6 +23,7 @@ def main():
     source = args.source.resolve(strict=True)
     out = (args.evidence or source.parent/'evidence').resolve()
     out.mkdir(parents=True, exist_ok=True)
+    (out/('release-'+args.arch+'.json')).unlink(missing_ok=True)
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source, text=True).strip()
     if not re.fullmatch('[0-9a-f]{40}', revision): raise SystemExit('full source revision required')
     if os.environ.get('SOURCE_REVISION', revision) != revision: raise SystemExit('staged revision mismatch')
@@ -61,6 +63,9 @@ def main():
         assert all((out/'browser'/name).stat().st_size > 0 for name in expected)
         run(uv+['--with', 'playwright==1.56.1', 'python', 'qa/google_console_fixture.py'], 'console-fixture', 240)
         browser = {'executed': True, 'screenshots': sorted(expected), 'checks': len(receipt['checks']), 'coverage': 'synthetic standalone skins and fake Console; not live shell/Google/physical phone'}
+    daemon_arch = subprocess.check_output(docker+['info','--format','{{.Architecture}}'],cwd=source,env=env,text=True).strip()
+    if {'x86_64':'amd64','amd64':'amd64','aarch64':'arm64','arm64':'arm64'}.get(daemon_arch) != args.arch:
+        raise SystemExit('Docker daemon must be native; never emulate')
     run(docker+['build', '--pull=false', '--platform', 'linux/'+args.arch,
                 '--build-arg', 'SOURCE_REVISION='+revision, '--label', 'org.opencontainers.image.revision='+revision,
                 '-f', 'app/Dockerfile', '-t', tag, '.'], 'image-build', 1200)
@@ -93,4 +98,6 @@ def main():
     print(json.dumps(evidence), flush=True)
 
 
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
+    main()
