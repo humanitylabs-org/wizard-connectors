@@ -62,7 +62,7 @@ class AgreementsHTTPTests(unittest.TestCase):
 
     def test_fresh_same_host_redirect_prefix_and_existing_saved_redirect(self):
         for k in ('GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','GOOGLE_REDIRECT_URI'): self.config.pop(k,None)
-        with patch.object(self.ui,'HOSTS',set()),patch.object(self.ui,'ORIGINS',set()):
+        with patch.object(self.ui,'HOSTS',{'box.example.invalid'}),patch.object(self.ui,'ORIGINS',set()):
             state=self.req('/api/state',headers={'Host':'box.example.invalid','Origin':'https://box.example.invalid'})[1]
             self.assertEqual(state['google']['suggested_redirect_uri'],'https://box.example.invalid/connected-accounts/api/google/callback')
             state=self.req('/api/state',headers={'Host':'box.example.invalid','X-Forwarded-Prefix':'/custom-route'})[1]
@@ -71,6 +71,14 @@ class AgreementsHTTPTests(unittest.TestCase):
         self.b.save_client('fixture.apps.googleusercontent.com','FIXTURE_SECRET',legacy)
         self.assertEqual(self.b.setup_status('https://box.example.invalid/connected-accounts/api/google/callback')['redirect_uri'],legacy)
         self.assertEqual(fixtures.Broker(self.config,self.fake).client_status()['redirect_uri'],legacy)
+
+    def test_matching_attacker_host_origin_and_empty_allowlist_fail_closed(self):
+        for hosts in (set(), self.ui.LOCAL_HOSTS):
+            with patch.object(self.ui,'HOSTS',hosts),patch.object(self.ui,'ORIGINS',set()):
+                for path in ('/api/state','/api/google/agreements'):
+                    body=self.payload() if path.endswith('/agreements') else None
+                    code,result,_=self.req(path,body,headers={'Host':'rebinding.example.invalid','Origin':'http://rebinding.example.invalid'})
+                    self.assertEqual((code,result),(403,{'error':'host_denied'}))
 
 
 class ConsoleAgreementTests(unittest.TestCase):

@@ -23,7 +23,8 @@ ROOT = Path(__file__).resolve().parent.parent
 OWNER = os.environ.get("CONNECTORS_OWNER_TOKEN", "")
 MCP = os.environ.get("CONNECTORS_MCP_TOKEN", "")
 MUSIC = os.environ.get('MUSIC_ADAPTER_TOKEN','')
-HOSTS = {s.split(":")[0] for s in os.environ.get("WIZARD_TRUSTED_HOSTS", "").split(",") if s}
+LOCAL_HOSTS = {'localhost', '127.0.0.1', 'wizard-connectors', 'wizard-connectors-calendar'}
+HOSTS = {s.split(":")[0] for s in os.environ.get("WIZARD_TRUSTED_HOSTS", "").split(",") if s} | LOCAL_HOSTS
 ORIGINS = {s.rstrip("/") for s in os.environ.get("WIZARD_TRUSTED_ORIGINS", "").split(",") if s}
 model = RemotePrivateModel() if os.environ.get('PRIVATE_WORKER_TOKEN') else PrivateModel(os.environ.get("TINFOIL_API_KEY", ""))
 jobs = Jobs(model, os.environ.get("DATA_DIR", "/data"))
@@ -66,7 +67,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def trusted(self, callback=False):
         host = self.headers.get("Host", "").split(":")[0]
-        if (HOSTS and host not in HOSTS) or not re.fullmatch(r'[A-Za-z0-9.-]+(?::[0-9]{1,5})?', self.headers.get('Host', '')):
+        if host not in HOSTS or not re.fullmatch(r'[A-Za-z0-9.-]+(?::[0-9]{1,5})?', self.headers.get('Host', '')):
             self.send(403, {"error": "host_denied"}); return False
         origin = self.headers.get("Origin")
         allowed = ORIGINS | {"http://" + self.headers.get("Host", ""), "https://" + self.headers.get("Host", "")}

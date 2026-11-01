@@ -85,7 +85,7 @@
       "env_variable": "WIZARD_TRUSTED_HOSTS",
       "label": "Trusted route hosts (comma separated)",
       "default": "",
-      "hint": "Optional host restriction. Leave blank to use the current Wizard host and same-host browser requests.",
+      "hint": "Installer supplies the Wizard route host. Blank permits loopback and internal service hosts only; never trust arbitrary request hosts.",
       "required": false
     },
     {

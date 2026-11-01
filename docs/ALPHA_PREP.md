@@ -12,7 +12,7 @@ The agent setup uses a fresh disposable Human Handoff profile. The owner types t
 
 - All five services use exactly `wizard-connectors:0.2.0-alpha.1`, `pull_policy: never`, and the existing shared non-root/read-only/capability-drop/tmpfs hardening. `runtime.package: image` avoids rebuilding an Alpha archive as a build-tier source app.
 - No reviewed-image form field remains. Required fields are auto-generated passwords, including the encrypted-store secret; installer/provider-specific values remain optional.
-- Origins default to the same Wizard host. Explicit host/origin pins remain available. New redirects use `/connected-accounts/api/google/callback` with validated forwarded route prefixes; already-saved redirects are preserved byte-for-byte, including legacy paths.
+- The installer must supply its routed Wizard host in `WIZARD_TRUSTED_HOSTS`; loopback/internal hosts are the safe blank default. Origins must match that validated Host or the explicit origin list. Arbitrary matching Host/Origin pairs are refused (DNS-rebinding defense). New redirects use `/connected-accounts/api/google/callback` with validated forwarded route prefixes; already-saved redirects are preserved byte-for-byte, including legacy paths. Confirm installer host injection in the fresh-box gate; no owner-specific host is embedded here.
 - The upstream view serves `/`; the gateway uses the canonical app ID `connected-accounts` as its mount, not a second nested view path.
 - The native image must be loaded under that exact tag before install. Merely changing Compose does not create a distributable image.
 
