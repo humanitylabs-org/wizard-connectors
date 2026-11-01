@@ -114,6 +114,18 @@ class BrokerHTTPTests(unittest.TestCase):
         self.assertEqual(self.finish(p)[0],200);self.assertEqual(self.finish(p)[0],400)
         p=self.start();self.b.pending[p['state']]['expires']=0;self.assertEqual(self.finish(p)[0],400)
         p=self.start();self.assertEqual(self.finish(p,error='access_denied')[0],400);self.assertEqual(self.finish(p)[0],400)
+    def test_overlapping_sign_in_windows_share_one_browser_binding(self):
+        first=self.start();cookie=self.cookie
+        code,res,h=self.req('/api/google/connect',{'youtube':True,'account':None},cookie=cookie);self.assertEqual(code,200)
+        self.assertEqual(h['Set-Cookie'].split(';')[0],cookie)
+        second={k:v[0] for k,v in parse_qs(urlsplit(res['authorization_url']).query).items()}
+        self.assertNotEqual(first['state'],second['state'])
+        self.fake.nonce=first['nonce'];self.assertEqual(self.finish(first)[0],200)
+    def test_callback_failure_explains_reason_and_keeps_binding(self):
+        p=self.start();code,body,h=self.finish(p,error='access_denied')
+        self.assertEqual(code,400);self.assertIn('You cancelled',body);self.assertNotIn('{{REASON}}',body);self.assertIsNone(h.get('Set-Cookie'))
+        p=self.start();code,body,_=self.req('/api/google/callback?state='+p['state']+'&code=x',owner=False,cookie='connectors_oauth=wrong')
+        self.assertEqual(code,400);self.assertIn('out of date',body)
     def test_nonce_issuer_audience_signature_and_subject_checks(self):
         for bad in ({'nonce':'wrong'},{'iss':'https://attacker.invalid'},{'aud':'wrong'},{'azp':'wrong'},{'exp':1},{'sub':''}):
             with self.subTest(bad=bad):

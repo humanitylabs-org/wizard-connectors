@@ -16,6 +16,7 @@ from service_rpc import RPC, RemotePrivateModel
 from google_broker import Denied
 from grants import calendar_caller
 import re
+import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 OWNER = os.environ.get("CONNECTORS_OWNER_TOKEN", "")
@@ -34,6 +35,14 @@ def google_status():
     except Denied:
         return {'state':'unavailable','accounts':[],'grants':[],'bindings':[],
                 'blocker':'broker_unavailable','music':{'state':'unbound','playback':'separate_existing_app'}}
+
+CALLBACK_REASONS = {
+    'consent_denied': 'You cancelled on Google’s screen, so nothing was connected. That’s fine: tap Connect again whenever you’re ready.',
+    'invalid_oauth_state': 'This sign-in window had gone out of date: it was open longer than 10 minutes, or it was started before Connected accounts restarted. Tap Connect again for a fresh one.',
+    'scope_consent_required': 'Google didn’t pass on Calendar access. Tap Connect again and leave “See your calendars” ticked on Google’s screen.',
+    'reauth_required': 'Google didn’t confirm this sign-in. Tap Connect again; if it happens twice, tell your wizard.',
+    '_': 'Something went wrong while finishing the sign-in. Tap Connect again; if it happens twice, tell your wizard.',
+}
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "ConnectedAccounts"
@@ -124,12 +133,14 @@ class Handler(BaseHTTPRequestHandler):
                 if not binding: raise Denied('invalid_oauth_state')
                 broker.call('finish', state=q.get('state',[''])[0],browser=binding.value,
                             code=q.get('code',[None])[0],error=q.get('error',[None])[0])
-                page='google-connected.html'
-                status=200
-            except (Denied,ValueError):
-                page='google-error.html'
-                status=400
-            return self.send(status,(ROOT/'web'/page).read_bytes(),'text/html; charset=utf-8',cookie='connectors_oauth=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
+            except (Denied,ValueError) as e:
+                reason=str(e) if isinstance(e,Denied) else 'invalid_callback'
+                # Reason code only: never the state, code or cookie.
+                print(f'google_callback_denied reason={reason}',file=sys.stderr,flush=True)
+                body=(ROOT/'web/google-error.html').read_text().replace('{{REASON}}',CALLBACK_REASONS.get(reason,CALLBACK_REASONS['_']))
+                # Keep the browser binding: another sign-in window from this browser may still be open.
+                return self.send(400,body.encode(),'text/html; charset=utf-8')
+            return self.send(200,(ROOT/'web/google-connected.html').read_bytes(),'text/html; charset=utf-8',cookie='connectors_oauth=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
         if path == "/healthz":
             return self.send(200, {"ok": True, "app": "wizard-connectors", "synthetic_only": True})
         static = {"/": "index.html", "/app.js":"app.js", "/boot.js":"boot.js", "/styles.css":"styles.css", "/wizard-ui.css":"wizard-ui.css", "/google-callback.js":"google-callback.js"}
@@ -223,7 +234,11 @@ class Handler(BaseHTTPRequestHandler):
             if path in ('/api/google/connect','/api/google/reconnect') and set(data) <= {'account','youtube','calendar'}:
                 if any(k in data and type(data[k]) is not bool for k in ('youtube','calendar')): raise ValueError()
                 if data.get('account') is not None and not isinstance(data['account'],str): raise ValueError()
-                browser=secrets.token_urlsafe(32)
+                # Reuse this browser's binding so overlapping sign-in windows all stay valid;
+                # a fresh value per tap would orphan any window opened earlier.
+                jar=SimpleCookie();jar.load(self.headers.get('Cookie',''))
+                prior=jar.get('connectors_oauth')
+                browser=prior.value if prior and re.fullmatch(r'[A-Za-z0-9_-]{43}',prior.value) else secrets.token_urlsafe(32)
                 value=broker.call('start', browser=browser,account=data.get('account'),youtube=data.get('youtube',False),calendar=data.get('calendar',False))
                 secure='; Secure' if any(o.startswith('https:') for o in ORIGINS) else ''
                 return self.send(200,value,cookie=f'connectors_oauth={browser}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600{secure}')

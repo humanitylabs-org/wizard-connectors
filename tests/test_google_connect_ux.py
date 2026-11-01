@@ -48,7 +48,7 @@ class GoogleConnectUXTests(unittest.TestCase):
         self.assertIn('sign-in wasn’t completed', page)
         self.assertIn('../../styles.css', page)
         self.assertNotIn(p['state'], page)
-        self.assertIn('Max-Age=0', headers['Set-Cookie'])
+        self.assertIsNone(headers.get('Set-Cookie'))  # binding kept for other open sign-in windows
         self.assertEqual(self.finish(p)[0], 400)
         self.assertEqual(self.b.status()['accounts'], [])
 
