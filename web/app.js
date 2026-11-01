@@ -68,7 +68,7 @@ function renderGoogleAuthorization(){
  if(a.status==='ready'){
   append('p',a.opened?'Finish signing in in the Google window. Your accounts will appear here when you return.':'Your browser kept the sign-in window closed. Continue below to choose your account.','google-status').setAttribute('role','status');
   const link=append('a',a.opened?'Open Google again':'Continue to Google','google-continue '+(a.opened?'secondary':'primary'));link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';
-  append('small','You’ll review the permissions on Google. Connecting does not yet give Calendar permission to show the account.');
+  append('small','Google shows you exactly what Wizard can see. When you come back, you choose which calendars show in Calendar.');
   button('Check now',checkGoogleReturn,detail,'text-button');
   button('Cancel sign-in',()=>{cancelGoogleAuth();render();},detail,'text-button');return;
  }
@@ -166,18 +166,14 @@ function renderGoogleAccounts(g){
  const intro=append('section',undefined,'wz-sec google-connect');
  intro.append(element('h3','Your Google accounts'));
  if(!g.accounts.length)intro.append(element('p','Connect any Google account to see its calendar in Wizard. You can add as many as you like.'));
- const actions=element('div',undefined,'actions');intro.append(actions);
- const connect=button(g.accounts.length?'Add another account':'Connect a Google account',()=>authorize(),actions,'primary');
- connect.disabled=!!g.blocker;
- button('Check accounts',async()=>{try{await refresh();}catch{dialog('Could not check accounts','Try again in a moment. Your connected accounts have not been changed.');}},actions,'text-button');
- if(g.blocker)intro.append(element('p',googleError(g.blocker),'google-status'));
+ // Connected accounts come first; "Add another account" sits under the list.
  for(const a of g.accounts){
-  const card=append('article',undefined,'google-account');
+  const card=element('article',undefined,'google-account');intro.append(card);
   card.append(element('h3',a.email||'Google account'));
   card.append(element('p',a.status==='connected'?'Connected':a.status==='reauth_required'?'Sign in again to restore access':'Account needs attention','google-help'));
   const calendarScope=a.scopes.includes('https://www.googleapis.com/auth/calendar.readonly');
   const allowed=(g.calendar_binding?.accounts||[]).includes(a.id);
-  card.append(element('p',allowed?'Calendar can use this account.':calendarScope?'Calendar read access approved. Choose whether Calendar can use it.':'Calendar does not have access to this account.'));
+  card.append(element('p',allowed?'Calendar can use this account.':calendarScope?'Google gave read-only calendar access. Turn it on to see this account’s events in Calendar.':'Calendar does not have access to this account.'));
   if(!calendarScope)button('Show this account’s calendar in Calendar',()=>authorize(a.id,false,true),card,'primary');
   else button(allowed?'Stop showing this account in Calendar':'Show this account’s calendar in Calendar',()=>{if(!allowed&&!confirm('Show this account’s calendars and events in the Calendar app?'))return;return accountAction('calendar/bind',{account:a.id,consent:!allowed});},card,allowed?'':'primary');
   const options=disclosure('Account options and permissions',card);
@@ -188,6 +184,11 @@ function renderGoogleAccounts(g){
   const permissions=disclosure('Technical permission details',options);
   permissions.append(element('p',a.offline?'Offline refresh authorized':'Session access only'),element('p',a.scopes.join(', '),'google-technical'));
  }
+ const actions=element('div',undefined,'actions');intro.append(actions);
+ const connect=button(g.accounts.length?'Add another account':'Connect a Google account',()=>authorize(),actions,g.accounts.length?'':'primary');
+ connect.disabled=!!g.blocker;
+ button('Check accounts',async()=>{try{await refresh();}catch{dialog('Could not check accounts','Try again in a moment. Your connected accounts have not been changed.');}},actions,'text-button');
+ if(g.blocker)intro.append(element('p',googleError(g.blocker),'google-status'));
  const music=disclosure('Other uses');
  music.append(element('h3','YouTube Music catalog'),element('span',g.music.state==='bound'?'Music account selected':'No Music account selected','badge'),element('p','Read-only catalog access does not authorize audio playback or change your existing Music source. No shared browser cookies are used.'));
  if(g.bindings.length){button('Unlink Music catalog',()=>accountAction('music/unlink',{}),music);const label=element('label','YouTube video ID','wz-label'),input=element('input',undefined,'wz-input');input.maxLength=11;input.placeholder='11-character video ID';label.append(input);music.append(label);button('Look up catalog item',async()=>{try{const r=await api('music/catalog',{account:g.bindings[0].account,video_id:input.value});dialog('Catalog metadata only',r.items.map(i=>i.title).join('\n')||'No catalog item returned. This is not proof of playback.');}catch(e){dialog('Catalog unavailable',errorText(e.message));}},music);}

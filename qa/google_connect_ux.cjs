@@ -6,8 +6,9 @@ const liveOnly=process.argv.includes('--live');
 const origin='https://wizard.tailc0f369.ts.net';
 const checks=[],errors=[],requests=[];let mode='baseline',fixture=null,stateError=false,connectMode='real',delay=0,connectCalls=0,realStarts=0;
 fs.mkdirSync(out,{recursive:true});
-function check(name,ok,detail){checks.push({name,ok:!!ok,...(detail?{detail}: {})});assert(ok,name);}
+function check(name,ok,detail){checks.push({name,ok:!!ok,...(detail?{detail}: {})});console.log((ok?'PASS ':'FAIL ')+name,Math.round(performance.now()/1000)+'s');assert(ok,name);}
 function read(name){return fs.readFileSync(path.join(source,'web',name));}
+async function appFrame(page){const loc=page.locator('iframe[src*="/connected-accounts/"]:visible').last();await loc.waitFor({timeout:60000});const fr=await (await loc.elementHandle()).contentFrame();assert(fr,'connected accounts frame');await fr.waitForSelector('#google-row',{timeout:60000});return fr;}
 (async()=>{const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 try{
  const ctx=await browser.newContext({...devices['Pixel 5'],viewport:{width:390,height:844},permissions:['clipboard-read','clipboard-write']});
@@ -41,9 +42,8 @@ try{
  await p.waitForFunction(()=>window.__wos&&window.WosSkin,{timeout:90000});
  check('actual phone shell',await p.evaluate(()=>document.documentElement.dataset.shell==='phone'));
  await p.evaluate(()=>__wos.openApp({id:'connected-accounts',kind:'wizard',url:'/connected-accounts/',name:'Connected accounts'}));
- await p.locator('iframe[src*="/connected-accounts/"]:visible').last().waitFor({timeout:60000});
- let f=p.frames().find(x=>x.url().includes('/connected-accounts/'));
- assert(f,'connected accounts frame');await f.waitForSelector('#google-row');
+ // Frame URL can still be about:blank when the iframe element appears; take the element's own frame.
+ let f=await appFrame(p);
  const originalSkin=await p.evaluate(()=>WosSkin.get?.()||null);
  async function settle(){await p.evaluate(async()=>{await Promise.all(document.getAnimations().filter(a=>Number.isFinite(a.effect?.getTiming().iterations)&&a.playState==='running').map(a=>a.finished.catch(()=>{})));});await p.waitForTimeout(650);}
  const tokens={};let identity=null;
@@ -105,8 +105,7 @@ try{
  const dc=await browser.newContext({viewport:{width:1440,height:1000},colorScheme:'dark'});await dc.route('**/*',routeHandler);
  for(const pass of (liveOnly?['candidate']:['baseline','candidate'])){
   mode=pass;const d=await dc.newPage();d.on('pageerror',e=>errors.push(e.message));await d.goto(origin+'/wizard-os-home/?shell=desktop',{waitUntil:'domcontentloaded'});await d.waitForFunction(()=>window.__wos&&window.WosSkin,{timeout:90000});check('actual desktop shell',await d.evaluate(()=>document.documentElement.dataset.shell==='desktop'));
-  await d.evaluate(()=>__wos.openApp({id:'connected-accounts',kind:'wizard',url:'/connected-accounts/',name:'Connected accounts'}));await d.locator('iframe[src*="/connected-accounts/"]:visible').last().waitFor();
-  const df=d.frames().find(x=>x.url().includes('/connected-accounts/'));await df.waitForSelector('#google-row');const full=d.getByRole('button',{name:'Full screen',exact:true});if(await full.count())await full.last().click();await d.waitForTimeout(900);
+  await d.evaluate(()=>__wos.openApp({id:'connected-accounts',kind:'wizard',url:'/connected-accounts/',name:'Connected accounts'}));const df=await appFrame(d);const full=d.getByRole('button',{name:'Full screen',exact:true});if(await full.count())await full.last().click();await d.waitForTimeout(900);
   const bodyId=await df.evaluate(()=>window.__desktopQA=crypto.randomUUID());
   for(const screen of ['root','google']){
    if(screen==='google')await df.click(pass==='baseline'?'#google-row':'#google-manage');
