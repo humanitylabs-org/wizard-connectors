@@ -1,14 +1,6 @@
-"""Versioned, owner-reviewed Google setup documents; no optional subscriptions."""
-VERSION = 'google-2026-11'
-DOCUMENTS = (
-    {'id': 'cloud_terms', 'title': 'Google Cloud Terms of Service', 'url': 'https://cloud.google.com/terms'},
-    {'id': 'api_terms', 'title': 'Google APIs Terms of Service', 'url': 'https://developers.google.com/terms'},
-    {'id': 'user_data_policy', 'title': 'Google API Services User Data Policy', 'url': 'https://developers.google.com/terms/api-services-user-data-policy'},
-)
-IDS = frozenset(d['id'] for d in DOCUMENTS)
-# ISO 3166-1 alpha-2. Codes, not a locale's translated country names, are stored.
-COUNTRIES = 'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'.split()
+"""Use the registry shipped beside the portable Google setup script."""
+from pathlib import Path
+import sys
 
-
-def options():
-    return {'version': VERSION, 'documents': list(DOCUMENTS), 'countries': COUNTRIES}
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skill/scripts"))
+from google_agreement_definitions import COUNTRIES, DOCUMENTS, IDS, VERSION, options

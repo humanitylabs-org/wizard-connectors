@@ -18,7 +18,7 @@ The agent setup uses a fresh disposable Human Handoff profile. The owner types t
 
 ## Verification in source preparation
 
-- Unit suite: **95 tests, OK**. Includes real owner HTTP/RPC and encrypted-store restart persistence for agreements, negative auth/origin/validation/storage cases, fake Console exact accept/stop/country/marketing behavior, and synthetic disposable-profile/sign-out/teardown checks. No browser is launched by these tests.
+- Unit suite: **96 tests, OK**. Includes real owner HTTP/RPC and encrypted-store restart persistence for agreements, negative auth/origin/validation/storage cases, fake Console exact accept/stop/country/marketing behavior, and synthetic disposable-profile/sign-out/teardown checks. No browser is launched by these tests.
 - Dependency-free Node DOM contracts exercise checkbox/country gating, save payload, Back, account cards and existing interaction feedback. `node --check` passes for `web/app.js` and every `qa/*.cjs`.
 - All three Google document URLs returned HTTP 200 to `curl -sI`.
 - Source scan found no owner name, private tailnet/domain or personal email. The remaining email literals are deliberately synthetic example/invalid-domain fixtures and a fake provider UID.

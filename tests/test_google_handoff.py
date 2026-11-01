@@ -28,6 +28,19 @@ class DisposableHandoffTests(unittest.TestCase):
     def handoff(self, **kw):
         with patch.object(script.HandoffSession,'command',return_value=self.status):return script.HandoffSession(**kw)
 
+    def test_shipped_skill_scripts_are_portable_without_source_checkout(self):
+        import subprocess
+        import sys
+        source=Path(script.__file__).resolve().parent
+        with tempfile.TemporaryDirectory() as directory:
+            dest=Path(directory)
+            for name in ('google_cloud_setup.py','google_agreement_definitions.py'):
+                shutil.copyfile(source/name,dest/name)
+            result=subprocess.run([sys.executable,str(dest/'google_cloud_setup.py'),'--help'],cwd=dest,capture_output=True,text=True,timeout=10)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertIn('--allow-persistent-profile',result.stdout)
+            self.assertNotIn('Traceback',result.stderr)
+
     def test_persistent_and_clone_refused_before_any_browser_inspection(self):
         for mode in ('persistent','clone',None):
             self.write_config(mode)

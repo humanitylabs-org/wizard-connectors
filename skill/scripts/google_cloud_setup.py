@@ -16,9 +16,9 @@ import sys
 from urllib.parse import urlsplit, urlencode, urlunsplit
 from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHandler
 
-# The runner stages this shipped source tree, not a copied/rewritten script.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'app'))
-from google_agreements import IDS, VERSION, COUNTRIES, DOCUMENTS
+# Keep the versioned registry beside this script so WAM can ship the skill alone.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from google_agreement_definitions import IDS, VERSION, COUNTRIES, DOCUMENTS
 
 
 def parse_agreements(value):
