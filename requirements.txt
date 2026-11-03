@@ -1,4 +1,4 @@
 tinfoil==0.14.0
-PyJWT[crypto]==2.10.1
+PyJWT[crypto]==2.15.1
 cryptography==50.0.2
 yt-dlp==2026.8.19
