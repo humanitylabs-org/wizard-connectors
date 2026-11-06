@@ -4,10 +4,15 @@ name: Alpha arm64 archive
 # tools/alpha_runner.py recipe: unit tests, DOM contracts, `docker build` with the exact
 # org.opencontainers.image.revision label and the compose tag, hardened five-service recipe smoke,
 # then `docker save | gzip -n`. No secrets, no registry push; contents: read only.
+# GitHub only lets workflow_dispatch run workflows already on the default branch, which this must not touch,
+# so the same job also runs on a push to this tooling branch and reads the exact release SHA from
+# .github/alpha-archive-input on that branch.
 on:
   workflow_dispatch:
     inputs:
       sha: {description: 'Full release commit SHA to build', required: true}
+  push:
+    branches: [tooling/alpha-archive-arm64]
 permissions:
   contents: read
 jobs:
@@ -15,17 +20,24 @@ jobs:
     if: github.repository == 'humanitylabs-org/wizard-connectors'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
-    env:
-      SHA: ${{ inputs.sha }}
     steps:
-      - name: Validate input
-        run: |
-          set -eu
-          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
-          test "$(uname -m)" = aarch64
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha }}
+          path: tooling
+          persist-credentials: false
+      - name: Resolve and validate release SHA
+        id: in
+        run: |
+          set -eu
+          sha="${{ inputs.sha }}"
+          [ -n "$sha" ] || sha=$(tr -d ' \n' < tooling/.github/alpha-archive-input)
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          test "$(uname -m)" = aarch64
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "SHA=$sha" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.in.outputs.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Exact commit, clean tree
@@ -47,7 +59,7 @@ jobs:
       - name: Build, test, smoke and export (repo recipe, arm64)
         env:
           ARCH: arm64
-          SOURCE_REVISION: ${{ inputs.sha }}
+          SOURCE_REVISION: ${{ steps.in.outputs.sha }}
           DOCKER_CMD: docker
         run: python3 tools/alpha_runner.py . --arch arm64 --evidence "$RUNNER_TEMP/evidence"
       - name: Inspect archive manifest (no load)
@@ -70,7 +82,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: connected-accounts-arm64-${{ inputs.sha }}
+          name: connected-accounts-arm64-${{ steps.in.outputs.sha }}
           path: ${{ runner.temp }}/evidence/
           if-no-files-found: error
           retention-days: 30
