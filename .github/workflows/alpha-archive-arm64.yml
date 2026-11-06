@@ -1,0 +1,76 @@
+name: Alpha arm64 archive
+# Tooling-only workflow (lives on tooling/alpha-archive-arm64; never part of a release commit).
+# Builds ONE exact source commit natively on GitHub's arm64 runner (no emulation) with the repo's own
+# tools/alpha_runner.py recipe: unit tests, DOM contracts, `docker build` with the exact
+# org.opencontainers.image.revision label and the compose tag, hardened five-service recipe smoke,
+# then `docker save | gzip -n`. No secrets, no registry push; contents: read only.
+on:
+  workflow_dispatch:
+    inputs:
+      sha: {description: 'Full release commit SHA to build', required: true}
+permissions:
+  contents: read
+jobs:
+  archive:
+    if: github.repository == 'humanitylabs-org/wizard-connectors'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      SHA: ${{ inputs.sha }}
+    steps:
+      - name: Validate input
+        run: |
+          set -eu
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(uname -m)" = aarch64
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Exact commit, clean tree
+        run: |
+          set -eu
+          test "$(git rev-parse HEAD)" = "$SHA"
+          test -z "$(git status --porcelain)"
+          test ! -e .github/workflows/alpha-archive-arm64.yml
+      - name: Install uv (pinned) and acquire the pinned base image
+        run: |
+          set -eu
+          python3 -m venv "$RUNNER_TEMP/boot"
+          "$RUNNER_TEMP/boot/bin/pip" install --only-binary=:all: uv==0.11.17
+          echo "$RUNNER_TEMP/boot/bin" >> "$GITHUB_PATH"
+          base=$(sed -n 's/^FROM //p' app/Dockerfile | head -1)
+          echo "base=$base"
+          docker pull "$base"
+          test "$(docker image inspect "$base" --format '{{.Architecture}}')" = arm64
+      - name: Build, test, smoke and export (repo recipe, arm64)
+        env:
+          ARCH: arm64
+          SOURCE_REVISION: ${{ inputs.sha }}
+          DOCKER_CMD: docker
+        run: python3 tools/alpha_runner.py . --arch arm64 --evidence "$RUNNER_TEMP/evidence"
+      - name: Inspect archive manifest (no load)
+        run: |
+          set -eu
+          cd "$RUNNER_TEMP/evidence"
+          sha256sum -c connected-accounts-arm64.tar.gz.sha256
+          python3 - <<'PY'
+          import json,tarfile
+          t=tarfile.open('connected-accounts-arm64.tar.gz','r:gz')
+          m=json.load(t.extractfile('manifest.json'))
+          cfg=m[0]['Config']; c=json.load(t.extractfile(cfg))
+          out={'repo_tags':m[0]['RepoTags'],'config_digest':'sha256:'+cfg.rsplit('/',1)[1],'architecture':c['architecture'],'os':c['os'],
+               'user':c['config'].get('User'),'revision':c['config']['Labels'].get('org.opencontainers.image.revision')}
+          print(json.dumps(out,indent=1)); json.dump(out,open('archive-manifest.json','w'),indent=1)
+          assert out['revision']==__import__('os').environ['SHA'] and out['architecture']=='arm64' and out['repo_tags']==['wizard-connectors:0.2.0-alpha.1']
+          PY
+          cat release-arm64.json
+          { echo '```json'; cat archive-manifest.json release-arm64.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: connected-accounts-arm64-${{ inputs.sha }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: error
+          retention-days: 30
