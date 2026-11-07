@@ -16,12 +16,13 @@ class RPC:
                           headers={'Content-Type':'application/json', 'Authorization':'Bearer '+self.token})
         try:
             with build_opener(ProxyHandler({}), NoRedirect()).open(request, timeout=100) as response:
-                raw = response.read(65537)
-                if len(raw)>65536: raise Denied('service_response_too_large')
+                raw = response.read(2*1024*1024+1)
+                if len(raw)>2*1024*1024: raise Denied('service_response_too_large')
                 result = json.loads(raw)
         except HTTPError as e:
-            try: error = json.loads(e.read(8192)).get('error', 'service_unavailable')
-            except Exception: error = 'service_unavailable'
+            with e:
+                try: error = json.loads(e.read(8192)).get('error', 'service_unavailable')
+                except Exception: error = 'service_unavailable'
             raise Denied(error) from None
         except Denied: raise
         except Exception: raise Denied('service_unavailable') from None
