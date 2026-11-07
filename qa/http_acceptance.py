@@ -24,7 +24,7 @@ check('unauthenticated source denied',request('/api/conversations/garden',who=No
 check('MCP cannot read source',request('/api/conversations/garden',who='mcp')[0]==401)
 check('foreign origin denied',request('/api/state',headers={'Origin':'https://attacker.invalid'})[0]==403)
 check('foreign host denied',request('/api/state',headers={'Host':'attacker.invalid'})[0]==403)
-check('Google activation gated',request('/api/google/connect',{})[1]['error']=='isolation_review_required')
+check('Google app setup required',request('/api/google/connect',{})[1]['error']=='google_configuration_required')
 check('source override rejected',request('/api/summarize',{'thread':'garden','request_id':'test-extra','classification':'public'})[0]==400)
 check('unknown conversation rejected',request('/api/summarize',{'thread':'real-inbox','request_id':'test-unknown'})[0]==400)
 check('private route configured',request('/api/state')[1]['private_route']['configured'])

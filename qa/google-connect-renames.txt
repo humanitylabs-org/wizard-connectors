@@ -1,0 +1,12 @@
+# Wording-only migrations; capabilities remain covered by the browser regression runner.
+label:Allow Calendar to use this account => Show this account’s calendar in Calendar | test=qa/google_connect_ux.cjs | token=Show this account’s calendar in Calendar
+label:Connect Google => Connect a Google account | test=qa/google_connect_ux.cjs | token=Connect a Google account
+label:Could not save Google app => Could not save Google app | test=qa/google_connect_ux.cjs | token=Could not save Google app
+label:Discard unsaved Google app configuration and refresh? => Discard unsaved Google app configuration? | test=qa/google_connect_ux.cjs | token=Discard unsaved Google app configuration?
+label:Let Calendar read this account => Show this account’s calendar in Calendar | test=qa/google_connect_ux.cjs | token=Show this account’s calendar in Calendar
+label:Not connected => Connect a Google account | test=qa/google_connect_ux.cjs | token=Connect a Google account
+label:Practice data => Try it out | test=qa/google_connect_ux.cjs | token=Try it out
+label:Private chat is simulated only. => Practice a private summary | test=qa/google_connect_ux.cjs | token=Practice a private summary
+label:Refresh accounts => Check accounts | test=qa/google_connect_ux.cjs | token=Check accounts
+label:Refresh unavailable => Could not check accounts | test=qa/google_connect_ux.cjs | token=Could not check accounts
+label:Stop Calendar using this account => Stop showing this account in Calendar | test=qa/google_connect_ux.cjs | token=Stop showing this account in Calendar

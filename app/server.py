@@ -1,4 +1,5 @@
 """Human API and content-free MCP. Provider credentials live in a separate broker."""
+import hashlib
 import hmac
 import json
 import mimetypes
@@ -14,12 +15,16 @@ from jobs import Jobs
 from private_model import PrivateModel, Blocked
 from service_rpc import RPC, RemotePrivateModel
 from google_broker import Denied
+from grants import calendar_caller
+import re
+import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 OWNER = os.environ.get("CONNECTORS_OWNER_TOKEN", "")
 MCP = os.environ.get("CONNECTORS_MCP_TOKEN", "")
 MUSIC = os.environ.get('MUSIC_ADAPTER_TOKEN','')
-HOSTS = {s.split(":")[0] for s in os.environ.get("WIZARD_TRUSTED_HOSTS", "localhost,127.0.0.1").split(",") if s}
+LOCAL_HOSTS = {'localhost', '127.0.0.1', 'wizard-connectors', 'wizard-connectors-calendar'}
+HOSTS = {s.split(":")[0] for s in os.environ.get("WIZARD_TRUSTED_HOSTS", "").split(",") if s} | LOCAL_HOSTS
 ORIGINS = {s.rstrip("/") for s in os.environ.get("WIZARD_TRUSTED_ORIGINS", "").split(",") if s}
 model = RemotePrivateModel() if os.environ.get('PRIVATE_WORKER_TOKEN') else PrivateModel(os.environ.get("TINFOIL_API_KEY", ""))
 jobs = Jobs(model, os.environ.get("DATA_DIR", "/data"))
@@ -32,6 +37,14 @@ def google_status():
     except Denied:
         return {'state':'unavailable','accounts':[],'grants':[],'bindings':[],
                 'blocker':'broker_unavailable','music':{'state':'unbound','playback':'separate_existing_app'}}
+
+CALLBACK_REASONS = {
+    'consent_denied': 'You cancelled on Google’s screen, so nothing was connected. That’s fine: tap Connect again whenever you’re ready.',
+    'invalid_oauth_state': 'This sign-in link was already used, is more than a day old, or was started before Connected accounts was updated. Tap Connect again for a fresh one.',
+    'scope_consent_required': 'Google didn’t pass on Calendar access. Tap Connect again and leave “See your calendars” ticked on Google’s screen.',
+    'reauth_required': 'Google didn’t confirm this sign-in. Tap Connect again; if it happens twice, tell your wizard.',
+    '_': 'Something went wrong while finishing the sign-in. Tap Connect again; if it happens twice, tell your wizard.',
+}
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "ConnectedAccounts"
@@ -54,7 +67,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def trusted(self, callback=False):
         host = self.headers.get("Host", "").split(":")[0]
-        if host not in HOSTS:
+        if host not in HOSTS or not re.fullmatch(r'[A-Za-z0-9.-]+(?::[0-9]{1,5})?', self.headers.get('Host', '')):
             self.send(403, {"error": "host_denied"}); return False
         origin = self.headers.get("Origin")
         allowed = ORIGINS | {"http://" + self.headers.get("Host", ""), "https://" + self.headers.get("Host", "")}
@@ -76,9 +89,44 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return False
 
+    def callback_guess(self):
+        # Same-host HTTPS by default, or a configured trusted origin; never a forwarded host.
+        origin = next(iter(sorted(o for o in ORIGINS if o.startswith('https://'))), '')
+        request_origin = 'https://' + self.headers.get('Host', '')
+        if request_origin in ORIGINS: origin = request_origin
+        if not origin:
+            host = self.headers.get('Host', 'localhost')
+            origin = ('http://' if host.split(':')[0] in ('localhost', '127.0.0.1') else 'https://') + host
+        prefix = self.headers.get('X-Forwarded-Prefix', '/connected-accounts').rstrip('/')
+        if not re.fullmatch(r'(?:/[A-Za-z0-9_-]+)*', prefix): prefix = '/connected-accounts'
+        return origin + prefix + '/api/google/callback'
+
+    def calendar_service(self, path, data=None):
+        if not calendar_caller(self.headers): return self.send(403, {'error':'calendar_grant_required'})
+        try:
+            if path == '/service/calendar/status' and self.command == 'GET':
+                return self.send(200, broker.call('calendar_status'))
+            if path == '/service/calendar/calendars' and self.command == 'POST' and data == {}:
+                return self.send(200, broker.call('calendar_calendars'))
+            if path == '/service/calendar/events' and self.command == 'POST' and set(data) == {'account','calendar_id','time_min','time_max'}:
+                return self.send(200, broker.call('calendar_events', **data))
+            return self.send(400, {'error':'invalid_operation'})
+        except Denied as e: return self.send(409, {'error':str(e)})
+
+    def do_DELETE(self):
+        if not self.trusted(): return
+        if not self.human(): return self.send(401, {'error':'owner_auth_required'})
+        if urlsplit(self.path).path != '/api/google/client': return self.send(404, {'error':'not_found'})
+        try: return self.send(200, broker.call('clear_client'))
+        except Denied as e: return self.send(409, {'error':str(e)})
+
     def do_GET(self):
         path = urlsplit(self.path).path
-        if not self.trusted(callback=path == '/api/google/callback'): return
+        if path.startswith('/service/calendar/'):
+            return self.calendar_service(path)
+        if not self.trusted(callback=path in ('/api/google/callback','/privacy')): return
+        if path == '/privacy':
+            return self.send(200,(ROOT/'web/privacy.html').read_bytes(),'text/html; charset=utf-8')
         if path == '/api/google/callback':
             # Google redirects use a separate Lax CSRF cookie, never the Strict owner session.
             try:
@@ -86,25 +134,27 @@ class Handler(BaseHTTPRequestHandler):
                 if any(len(v)!=1 for v in q.values()): raise ValueError()
                 cookies=SimpleCookie(); cookies.load(self.headers.get('Cookie',''))
                 binding=cookies.get('connectors_oauth')
-                if not binding: raise Denied('invalid_oauth_state')
-                broker.call('finish', state=q.get('state',[''])[0],browser=binding.value,
+                broker.call('finish', state=q.get('state',[''])[0],browser=binding.value if binding else '',
                             code=q.get('code',[None])[0],error=q.get('error',[None])[0])
-                message='Google account connected. Close this tab and refresh Connected accounts.'
-                status=200
-            except (Denied,ValueError):
-                message='Google authorization did not complete. Return to Connected accounts and try again.'
-                status=400
-            return self.send(status, message.encode(), 'text/plain',cookie='connectors_oauth=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
+            except (Denied,ValueError) as e:
+                reason=str(e) if isinstance(e,Denied) else 'invalid_callback'
+                # Reason code only: never the state, code or cookie.
+                ref=hashlib.sha256(q.get('state',[''])[0].encode()).hexdigest()[:8] if q.get('state') else '-'
+                print(f'google_callback_denied reason={reason} sign_in={ref}',file=sys.stderr,flush=True)
+                body=(ROOT/'web/google-error.html').read_text().replace('{{REASON}}',CALLBACK_REASONS.get(reason,CALLBACK_REASONS['_']))
+                # Keep the browser binding: another sign-in window from this browser may still be open.
+                return self.send(400,body.encode(),'text/html; charset=utf-8')
+            return self.send(200,(ROOT/'web/google-connected.html').read_bytes(),'text/html; charset=utf-8',cookie='connectors_oauth=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
         if path == "/healthz":
             return self.send(200, {"ok": True, "app": "wizard-connectors", "synthetic_only": True})
-        static = {"/": "index.html", "/app.js":"app.js", "/boot.js":"boot.js", "/styles.css":"styles.css", "/wizard-ui.css":"wizard-ui.css"}
+        static = {"/": "index.html", "/app.js":"app.js", "/boot.js":"boot.js", "/styles.css":"styles.css", "/wizard-ui.css":"wizard-ui.css", "/google-callback.js":"google-callback.js"}
         if path in static:
             p = ROOT / "web" / static[path]
             return self.send(200, p.read_bytes(), mimetypes.guess_type(p.name)[0] or "text/plain")
         if not self.human(): return self.send(401, {"error":"owner_auth_required"})
         try:
             if path == "/api/state":
-                return self.send(200, {"google":google_status(), "synthetic_only":True,
+                return self.send(200, {"google":{**google_status(), 'suggested_redirect_uri':self.callback_guess()}, "synthetic_only":True,
                     "private_route":{"model":"tinfoil/glm-5-3", "enabled":jobs.enabled, "configured":bool(model.key), "fallback":False, "tools":False},
                     "assurance":{"real_data_eligible":False,"host_admin_isolation":False,"network_confinement":os.environ.get('ISOLATED_PACKAGE') == 'true'},
                     "threads":[{"id":k,"title":v["title"],"count":len(v["messages"])} for k,v in THREADS.items()]})
@@ -119,8 +169,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(404, {"error":"not_found"})
 
     def do_POST(self):
-        if not self.trusted(): return
         path = urlsplit(self.path).path
+        is_calendar = path.startswith('/service/calendar/')
+        if is_calendar:
+            if not calendar_caller(self.headers): return self.send(403, {'error':'calendar_grant_required'})
+        elif path == '/api/google/setup/intake':
+            # Direct internal service/loopback only; ingress rejects public/proxied requests.
+            if (self.headers.get('Host', '').split(':')[0] not in ('wizard-connectors','127.0.0.1','localhost')
+                or any(k.lower().startswith(('x-forwarded-', 'tailscale-')) or k.lower() in ('forwarded','via','origin','cookie') for k in self.headers)):
+                return self.send(403, {'error':'internal_intake_required'})
+        elif not self.trusted(): return
         try:
             size = int(self.headers.get("Content-Length", "0"))
             if size < 1 or size > 8192: raise ValueError()
@@ -130,6 +188,15 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict): raise ValueError()
         except Exception:
             return self.send(400, {"error":"invalid_request"})
+        if is_calendar: return self.calendar_service(path, data)
+        if path == '/api/google/setup/intake':
+            if set(data) != {'client_id','client_secret'}: return self.send(400, {'error':'invalid_request'})
+            try:
+                value = broker.call('setup_deposit', token=self.headers.get('Authorization','').removeprefix('Bearer '), **data)
+                return self.send(200, value)
+            except Denied as e:
+                return self.send(403 if str(e) == 'invalid_setup_token' else 400, {'error': str(e)})
+            except OSError: return self.send(503, {'error':'local_storage_unavailable'})
         if path == "/api/session":
             token = data.get("token")
             if not OWNER or not isinstance(token,str) or not hmac.compare_digest(token, OWNER):
@@ -166,13 +233,25 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(202,jobs.create(data["thread"],data["request_id"]))
             if path.startswith("/api/cancel/") and not data:
                 return self.send(200,jobs.cancel(path.rsplit("/",1)[1]))
-            if path in ('/api/google/connect','/api/google/reconnect') and set(data) <= {'account','youtube'}:
-                if 'youtube' in data and not isinstance(data['youtube'],bool): raise ValueError()
-                browser=secrets.token_urlsafe(32)
-                value=broker.call('start', browser=browser,account=data.get('account'),youtube=data.get('youtube',False))
+            if path == '/api/google/agreements':
+                if set(data) != {'agreements', 'version', 'country'}: raise ValueError()
+                return self.send(200,broker.call('save_agreements', **data))
+            if path == '/api/google/client' and set(data) == {'client_id','client_secret','redirect_uri'}:
+                return self.send(200,broker.call('save_client',**data))
+            if path in ('/api/google/connect','/api/google/reconnect') and set(data) <= {'account','youtube','calendar'}:
+                if any(k in data and type(data[k]) is not bool for k in ('youtube','calendar')): raise ValueError()
+                if data.get('account') is not None and not isinstance(data['account'],str): raise ValueError()
+                # Reuse this browser's binding so overlapping sign-in windows all stay valid;
+                # a fresh value per tap would orphan any window opened earlier.
+                jar=SimpleCookie();jar.load(self.headers.get('Cookie',''))
+                prior=jar.get('connectors_oauth')
+                browser=prior.value if prior and re.fullmatch(r'[A-Za-z0-9_-]{43}',prior.value) else secrets.token_urlsafe(32)
+                value=broker.call('start', browser=browser,account=data.get('account'),youtube=data.get('youtube',False),calendar=data.get('calendar',False))
+                started=parse_qs(urlsplit(value['authorization_url']).query).get('state',[''])[0]
+                print(f'google_sign_in_started sign_in={hashlib.sha256(started.encode()).hexdigest()[:8]}',file=sys.stderr,flush=True)
                 secure='; Secure' if any(o.startswith('https:') for o in ORIGINS) else ''
-                return self.send(200,value,cookie=f'connectors_oauth={browser}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600{secure}')
-            operations={'/api/music/bind':('bind',{'account','consent'}),'/api/music/unlink':('unlink',set()),
+                return self.send(200,value,cookie=f'connectors_oauth={browser}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400{secure}')
+            operations={'/api/calendar/bind':('calendar_bind',{'account','consent'}),'/api/music/bind':('bind',{'account','consent'}),'/api/music/unlink':('unlink',set()),
                         '/api/google/disconnect':('disconnect',{'account'}),'/api/music/catalog':('catalog',{'account','video_id'}),
                         '/api/music/audio-probe':('audio_probe',{'video_id'})}
             if path in operations:
@@ -191,14 +270,25 @@ class Handler(BaseHTTPRequestHandler):
     def mcp(self, request):
         ident, method, params = request.get("id"), request.get("method"), request.get("params",{})
         if method == "initialize":
-            result = {"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"wizard-connectors","version":"0.1.1"}}
+            result = {"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"wizard-connectors","version":"0.2.0"}}
         elif method == "tools/list":
-            result = {"tools":[{"name":"connector_status","description":"Content-free connector readiness. No private sources or results.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
+            empty = {"type":"object","properties":{},"additionalProperties":False}
+            result = {"tools":[{"name":"connector_status","description":"Content-free connector readiness. No private sources or results.","inputSchema":empty},
+                               {"name":"google_app_setup_status","description":"Google app configured flag, exact redirect URI and required APIs/scopes. No credentials.","inputSchema":empty},
+                               {"name":"google_app_setup_begin","description":"Owner-authorized Google app setup: mint a single-use internal intake capability, valid 30 minutes. No provider secrets. Reissuing invalidates the previous capability.","inputSchema":empty},
                                {"name":"summary_job_status","description":"Content-free status for an owner-issued job handle.","inputSchema":{"type":"object","properties":{"job_id":{"type":"string"}},"required":["job_id"],"additionalProperties":False}}]}
         elif method == "tools/call":
             name, args = params.get("name"), params.get("arguments",{})
             if name == "connector_status" and not args:
                 content = {"synthetic_only":True,"google":google_status()['state'],"private_enabled":jobs.enabled,"real_data_eligible":False}
+            elif name in ('google_app_setup_status', 'google_app_setup_begin') and args == {}:
+                try:
+                    content = broker.call('setup_status', redirect_uri=self.callback_guess())
+                    if name == 'google_app_setup_begin':
+                        intake = broker.call('setup_begin', redirect_uri=content['redirect_uri'])
+                        content = {'intake_url': 'http://wizard-connectors-calendar:8799/api/google/setup/intake#' + intake['token'],
+                                   'expires_in': intake['expires_in'], 'redirect_uri': content['redirect_uri'], 'agreements': content['agreements']}
+                except Denied as e: content = {'error': str(e)}
             elif name == "summary_job_status" and isinstance(args,dict) and set(args) == {"job_id"}:
                 try: content = jobs.get(args["job_id"])
                 except (KeyError,TypeError): content = {"error":"not_found"}

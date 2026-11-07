@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory() as tmp:
     env=dict(l.split('=',1) for l in Path(os.environ['QA_ENV']).read_text().splitlines() if '=' in l)
     os.environ.update(env,DATA_DIR=tmp+'/ui',PORT='0',BROKER_TOKEN='f'*40,BIND_HOST='127.0.0.1')
     b=Broker({'BROKER_DATA_DIR':tmp+'/broker','GOOGLE_STORE_KEY':Fernet.generate_key().decode(),
-              'GOOGLE_REVIEW_APPROVED':'true','GOOGLE_CLIENT_ID':'fixture-client','GOOGLE_CLIENT_SECRET':'FAKE_CLIENT_SECRET',
+              'GOOGLE_CLIENT_ID':'fixture-client','GOOGLE_CLIENT_SECRET':'FAKE_CLIENT_SECRET',
               'GOOGLE_REDIRECT_URI':'http://127.0.0.1:19476/api/google/callback'},FakeGoogle())
     original=b.start
     def start(**args):

@@ -7,11 +7,11 @@ x-security: &security
   pids_limit: 128
   tmpfs: ["/tmp:rw,noexec,nosuid,size=128m,uid=1000,gid=1000"]
 services:
-  ingress:
+  # Consumer endpoint http://wizard-connectors-calendar:8799. The service name is the
+  # advertised host, so WAM's per-edge link network resolves it; no shared main network.
+  wizard-connectors-calendar:
     <<: *security
-    build: &build
-      context: .
-      dockerfile: app/Dockerfile
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-32814063cec88cd99a9750c5f21cf964f099c9c5@sha256:24a2c276338d45a6a55129bfe39ecc5810dc7b33b8bcfabfa1172a7e573af5f0
     command: [python, app/ingress.py]
     networks: [ingress-lane, edge]
     x-runtipi:
@@ -19,7 +19,7 @@ services:
       internal_port: 8799
   wizard-connectors:
     <<: *security
-    build: *build
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-32814063cec88cd99a9750c5f21cf964f099c9c5@sha256:24a2c276338d45a6a55129bfe39ecc5810dc7b33b8bcfabfa1172a7e573af5f0
     environment:
       PORT: "8799"
       DATA_DIR: /data
@@ -31,20 +31,23 @@ services:
       PRIVATE_ROUTE_CONFIGURED: ${PRIVATE_ROUTE_CONFIGURED:-false}
       MEDIA_WORKER_TOKEN: ${MEDIA_WORKER_TOKEN:?Required}
       ISOLATED_PACKAGE: "true"
-      WIZARD_TRUSTED_HOSTS: ${WIZARD_TRUSTED_HOSTS:-localhost,127.0.0.1}
+      WIZARD_TRUSTED_HOSTS: ${WIZARD_TRUSTED_HOSTS:-}
       WIZARD_TRUSTED_ORIGINS: ${WIZARD_TRUSTED_ORIGINS:-}
+      WIZARD_GRANTS_FILE: /wizard/grants.json
+    # WAM injects its standard read-only /wizard grants directory into services.
     volumes: ["ui-data:/data"]
     networks: [ingress-lane, google-lane, private-lane, media-lane]
   google-broker:
     <<: *security
-    build: *build
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-32814063cec88cd99a9750c5f21cf964f099c9c5@sha256:24a2c276338d45a6a55129bfe39ecc5810dc7b33b8bcfabfa1172a7e573af5f0
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: google
       PORT: "8800"
       BROKER_DATA_DIR: /data
       BROKER_TOKEN: ${BROKER_TOKEN:?Required}
-      GOOGLE_REVIEW_APPROVED: ${GOOGLE_REVIEW_APPROVED:-false}
+      GOOGLE_DISABLED: ${GOOGLE_DISABLED:-false}
+      GOOGLE_STORE_SECRET: ${GOOGLE_STORE_SECRET:-}
       GOOGLE_STORE_KEY: ${GOOGLE_STORE_KEY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
@@ -53,7 +56,7 @@ services:
     networks: [google-lane, google-egress]
   media-worker:
     <<: *security
-    build: *build
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-32814063cec88cd99a9750c5f21cf964f099c9c5@sha256:24a2c276338d45a6a55129bfe39ecc5810dc7b33b8bcfabfa1172a7e573af5f0
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: media
@@ -64,7 +67,7 @@ services:
     networks: [media-lane, media-egress]
   private-worker:
     <<: *security
-    build: *build
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-32814063cec88cd99a9750c5f21cf964f099c9c5@sha256:24a2c276338d45a6a55129bfe39ecc5810dc7b33b8bcfabfa1172a7e573af5f0
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: private
