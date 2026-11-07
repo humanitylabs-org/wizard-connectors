@@ -3,7 +3,7 @@ wizard: 0.2
 id: connected-accounts
 renamed_from: [wizard-connectors]
 name: Connected accounts
-type: service
+type: external
 category: app
 version: 0.2.0
 summary: Owner-managed Google account broker and simulated private chat summaries.

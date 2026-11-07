@@ -1,13 +1,13 @@
 {
   "name": "Connected accounts",
   "id": "connected-accounts",
-  "wizard_type": "service",
+  "wizard_type": "external",
   "available": true,
-  "short_desc": "Your Google accounts for Calendar and Music.",
+  "short_desc": "External: your Google accounts for Calendar and Music.",
   "author": "Humanity Labs",
   "port": 8799,
   "categories": [
-    "utilities"
+    "network"
   ],
   "description": "Owner-managed Google app, account permissions, read-only Calendar source and simulated private chat.",
   "tipi_version": 3,
