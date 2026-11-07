@@ -19,7 +19,7 @@ Manual setup has seven screens: account/audience; project; Calendar API; Auth br
 Existing MCP Bearer authentication protects both new tools. Empty-object arguments only:
 
 - `google_app_setup_status`: `configured`, `managed`, `redirect_uri`, `required_apis`, `required_scopes`, `agreements: {accepted, version, country}`. No client ID, secret, email, accounts or calendar content.
-- `google_app_setup_begin`: `intake_url`, `expires_in: 1800`, `redirect_uri`, `agreements: {accepted, version, country}`. The URL is `http://wizard-connectors-calendar:8799/api/google/setup/intake#<capability>`, on the existing private Wizard main-network ingress. The fragment never goes in an HTTP request URL or access log. A new begin invalidates any earlier setup; restart invalidates all.
+- `google_app_setup_begin`: `intake_url`, `expires_in: 1800`, `redirect_uri`, `agreements: {accepted, version, country}`. The URL is `http://wizard-connectors-calendar:8799/api/google/setup/intake#<capability>`, on the private `wizard-connectors-calendar` ingress service (it joins no shared main network). The fragment never goes in an HTTP request URL or access log. A new begin invalidates any earlier setup; restart invalidates all.
 
 The automation process splits the fragment and POSTs **only** `{client_id,client_secret}` with `Authorization: Bearer <capability>` and no cookies, Origin or proxy/forwarded headers. It does not fetch through a Google-page browser context (CORS/private-network-access would block that); the browser-control script carries values in its isolated Python memory directly to the fixed internal ingress. Proxy environment variables and HTTP redirects are disabled. Intake is not a public browser form and must not be opened as a browser URL.
 
