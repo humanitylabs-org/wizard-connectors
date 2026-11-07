@@ -35,11 +35,9 @@ run(['docker','build','--build-arg','SOURCE_REVISION='+revision,'-t',image,'-f',
 image_id = run(['docker','image','inspect',image,'--format','{{.Id}}']).stdout.strip()
 (proof/'image.json').write_text(json.dumps({'source_revision':revision,'image':image,'image_id':image_id},indent=2))
 run(['docker','run','--rm',image,'python3','-m','unittest','discover','-s','tests','-v'])
-# Never join a live app network. This separate network models the main network.
-network = 'wcon-byo-proof-main'
-run(['docker','network','inspect',network],check=False)
-existing = subprocess.run(['docker','network','inspect',network],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-if existing.returncode: run(['docker','network','create',network])
+# Never join a live app network. The recipe joins no shared main network; consumers are modelled on the
+# proof project's own edge network, where the ingress service name is the advertised consumer host.
+network = 'wcon-byo-proof_edge'
 # Colima shares only the macOS home into its VM; /Volumes bind mounts appear empty,
 # so the read-only grants mount would fail closed. Keep this tiny fixture under ~.
 data = Path.home()/'.cache'/'wcon-byo-proof'/'app-data'
@@ -48,10 +46,10 @@ key = 'FAKE_CALENDAR_GRANT_FOR_ISOLATED_PROOF_ONLY'
 grants = {'outgoing':{},'incoming':[{'from':'wizard-calendar','sha256':hashlib.sha256(key.encode()).hexdigest()}], 'provider_endpoints':{},'enforce':True}
 (data/'wizard'/'grants.json').write_text(json.dumps(grants))
 env.update({name:('FAKE_'+name+'_')*4 for name in ('CONNECTORS_OWNER_TOKEN','CONNECTORS_MCP_TOKEN','MUSIC_ADAPTER_TOKEN','BROKER_TOKEN','PRIVATE_WORKER_TOKEN','MEDIA_WORKER_TOKEN','GOOGLE_STORE_SECRET')})
-env.update(APP_DATA_DIR=str(data),WIZARD_MAIN_NETWORK=network)
+env.update(APP_DATA_DIR=str(data))
 # JSON is valid YAML. Prebuilt image for every service; compose --no-build cannot
 # accidentally rebuild another revision or touch the live install project.
-services = ('ingress','wizard-connectors','google-broker','media-worker','private-worker')
+services = ('wizard-connectors-calendar','wizard-connectors','google-broker','media-worker','private-worker')
 override = proof/'compose-image.json'
 # Model WAM's standard injection; the app recipe must not declare this mount.
 assert '${APP_DATA_DIR}/wizard:/wizard:ro' not in (root/'runtipi/docker-compose.yml').read_text()

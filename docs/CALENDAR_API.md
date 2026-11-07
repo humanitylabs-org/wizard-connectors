@@ -1,13 +1,14 @@
 # Calendar source API
 
-Consumer base: `http://wizard-connectors-calendar:8799` — the `ingress` service's
-unique alias on the shared Runtipi main network (`runtipi_tipi_main_network` by
-default, overridable via `WIZARD_MAIN_NETWORK` for isolated staging). Ingress
-forwards to the internal UI, which verifies the grant before calling the broker.
+Consumer base: `http://wizard-connectors-calendar:8799` — the name of the `is_main`
+ingress service (`wizard-connectors-calendar`). The app joins no shared Runtipi main
+network: WAM's isolated mode gives the approved Calendar → Connected accounts edge its own
+link network (`wizard-link-wizard-calendar--connected-accounts`) on which that name resolves.
+Ingress forwards to the internal UI, which verifies the grant before calling the broker.
 The App Manager injects its standard `${APP_DATA_DIR}/wizard:/wizard:ro` mount
 and `WIZARD_GRANTS_FILE=/wizard/grants.json` into the app services. The application
 recipe does not declare a grants mount. The UI verifies the grant; the read-only
-directory preserves atomic replacement/revocation visibility. Ingress is `is_main`
+directory preserves atomic replacement/revocation visibility. The ingress service is `is_main`
 with `internal_port: 8799`: WAM must publish that service, not the internal UI,
 as `provider_endpoints["connected-accounts"]` on fresh installs (the legacy
 `wizard-connectors` key can remain on existing installs). Consumers use that endpoint first.

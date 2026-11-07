@@ -50,8 +50,9 @@ reset or discard the store to conceal a decryption failure.
 Only the broker receives Google client/key settings and encrypted volume.
 UI → broker uses existing token-authenticated fixed RPC, not generic fetch.
 Five services retain isolated networks, non-root/read-only execution, capability
-drops, bounded tmpfs, no-new-privileges and no host sockets/home mounts. Ingress
-joins the shared main network for grant-checked Calendar access. WAM injects the
+drops, bounded tmpfs, no-new-privileges and no host sockets/home mounts. The ingress
+service (`wizard-connectors-calendar`) joins no shared main network; WAM's per-edge link network
+carries grant-checked Calendar access. WAM injects the
 standard read-only grants directory into app services; the application recipe
 contains no grants mount. The UI validates incoming `wizard-calendar` grants.
 See [Calendar API](CALENDAR_API.md).

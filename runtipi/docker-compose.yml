@@ -7,16 +7,14 @@ x-security: &security
   pids_limit: 128
   tmpfs: ["/tmp:rw,noexec,nosuid,size=128m,uid=1000,gid=1000"]
 services:
-  ingress:
+  # Consumer endpoint http://wizard-connectors-calendar:8799. The service name is the
+  # advertised host, so WAM's per-edge link network resolves it; no shared main network.
+  wizard-connectors-calendar:
     <<: *security
     image: wizard-connectors:0.2.0-alpha.1
     pull_policy: never
     command: [python, app/ingress.py]
-    networks:
-      ingress-lane: {}
-      edge: {}
-      main:
-        aliases: [wizard-connectors-calendar]
+    networks: [ingress-lane, edge]
     x-runtipi:
       is_main: true
       internal_port: 8799
@@ -88,9 +86,6 @@ volumes:
   ui-data: {}
   google-data: {}
 networks:
-  main:
-    external: true
-    name: ${WIZARD_MAIN_NETWORK:-runtipi_tipi_main_network}
   google-lane:
     internal: true
   ingress-lane:

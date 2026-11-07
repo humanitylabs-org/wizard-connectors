@@ -20,8 +20,10 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     docker = shlex.split(os.environ.get('DOCKER_CMD', 'docker'))
     project = 'connected-alpha-smoke-' + secrets.token_hex(6)
-    network = project + '-main'
-    env = dict(os.environ, WIZARD_MAIN_NETWORK=network)
+    # The recipe joins no shared main network; the probe uses the project's own edge network,
+    # where the ingress service name is the advertised consumer host (WAM link nets do the same).
+    network = project + '_edge'
+    env = dict(os.environ)
     fields = json.loads((ROOT/'runtipi/config.json').read_text())['form_fields']
     for field in fields:
         if field.get('required'):
@@ -40,7 +42,6 @@ def main():
         override.write_text(json.dumps({'services': {'wizard-connectors': {'volumes': ['smoke-grants:/wizard:ro']}}, 'volumes': {'smoke-grants': {}}}))
         compose = ['compose', '-p', project, '-f', str(ROOT/'runtipi/docker-compose.yml'), '-f', str(override)]
         try:
-            run(['network', 'create', '--label', 'wizard.alpha.smoke='+project, network])
             run(compose+['up', '-d', '--pull', 'never', '--no-build'])
             ids = run(compose+['ps', '-aq']).split()
             assert len(ids) == 5
@@ -71,8 +72,6 @@ print('PASS ingress health, owner/grant denial, public intake denial')'''
         finally:
             try: run(compose+['down', '--volumes', '--remove-orphans', '--timeout', '10'])
             except Exception: cleanup_errors.append('compose_down_failed')
-            try: run(['network', 'rm', network])
-            except Exception: cleanup_errors.append('owned_network_removal_failed')
             if cleanup_errors: raise RuntimeError(','.join(cleanup_errors))
         assert not run(['ps', '-aq', '--filter', 'label=com.docker.compose.project='+project]).strip()
         assert not run(['volume', 'ls', '-q', '--filter', 'label=com.docker.compose.project='+project]).strip()
