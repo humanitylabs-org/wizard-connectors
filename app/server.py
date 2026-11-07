@@ -270,7 +270,7 @@ class Handler(BaseHTTPRequestHandler):
     def mcp(self, request):
         ident, method, params = request.get("id"), request.get("method"), request.get("params",{})
         if method == "initialize":
-            result = {"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"wizard-connectors","version":"0.2.0-alpha.1"}}
+            result = {"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"wizard-connectors","version":"0.2.0"}}
         elif method == "tools/list":
             empty = {"type":"object","properties":{},"additionalProperties":False}
             result = {"tools":[{"name":"connector_status","description":"Content-free connector readiness. No private sources or results.","inputSchema":empty},

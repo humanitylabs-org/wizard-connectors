@@ -5,7 +5,7 @@ renamed_from: [wizard-connectors]
 name: Connected accounts
 type: service
 category: app
-version: 0.2.0-alpha.1
+version: 0.2.0
 summary: Owner-managed Google account broker and simulated private chat summaries.
 license: MIT
 source: https://github.com/humanitylabs-org/wizard-connectors

@@ -11,8 +11,7 @@ services:
   # advertised host, so WAM's per-edge link network resolves it; no shared main network.
   wizard-connectors-calendar:
     <<: *security
-    image: wizard-connectors:0.2.0-alpha.1
-    pull_policy: never
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-56d582d6fda09f313a473445f7a3aa79894c7a21@sha256:c9a1e267bb032810de737cb065c70cb0291e01fe46d0696e3649e702c3f0c5e8
     command: [python, app/ingress.py]
     networks: [ingress-lane, edge]
     x-runtipi:
@@ -20,8 +19,7 @@ services:
       internal_port: 8799
   wizard-connectors:
     <<: *security
-    image: wizard-connectors:0.2.0-alpha.1
-    pull_policy: never
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-56d582d6fda09f313a473445f7a3aa79894c7a21@sha256:c9a1e267bb032810de737cb065c70cb0291e01fe46d0696e3649e702c3f0c5e8
     environment:
       PORT: "8799"
       DATA_DIR: /data
@@ -41,8 +39,7 @@ services:
     networks: [ingress-lane, google-lane, private-lane, media-lane]
   google-broker:
     <<: *security
-    image: wizard-connectors:0.2.0-alpha.1
-    pull_policy: never
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-56d582d6fda09f313a473445f7a3aa79894c7a21@sha256:c9a1e267bb032810de737cb065c70cb0291e01fe46d0696e3649e702c3f0c5e8
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: google
@@ -59,8 +56,7 @@ services:
     networks: [google-lane, google-egress]
   media-worker:
     <<: *security
-    image: wizard-connectors:0.2.0-alpha.1
-    pull_policy: never
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-56d582d6fda09f313a473445f7a3aa79894c7a21@sha256:c9a1e267bb032810de737cb065c70cb0291e01fe46d0696e3649e702c3f0c5e8
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: media
@@ -71,8 +67,7 @@ services:
     networks: [media-lane, media-egress]
   private-worker:
     <<: *security
-    image: wizard-connectors:0.2.0-alpha.1
-    pull_policy: never
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-56d582d6fda09f313a473445f7a3aa79894c7a21@sha256:c9a1e267bb032810de737cb065c70cb0291e01fe46d0696e3649e702c3f0c5e8
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: private

@@ -7,9 +7,9 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 
-class AlphaRecipeTests(unittest.TestCase):
-    def test_fixed_alpha_version_every_service_and_api(self):
-        version='0.2.0-alpha.1'
+class ReleaseRecipeTests(unittest.TestCase):
+    def test_release_version_and_digest_pinned_image_on_every_service(self):
+        version='0.2.0'
         config=json.loads((ROOT/'runtipi/config.json').read_text())
         self.assertEqual(config['version'],version)
         self.assertIn('version: '+version+'\n',(ROOT/'wizard.md').read_text())
@@ -18,10 +18,14 @@ class AlphaRecipeTests(unittest.TestCase):
         self.assertIn('"version":"'+version+'"',(ROOT/'app/server.py').read_text())
         self.assertIn("version:'"+version+"'",(ROOT/'web/app.js').read_text())
         compose=(ROOT/'runtipi/docker-compose.yml').read_text()
-        self.assertEqual(compose.count('image: wizard-connectors:'+version+'\n'),5)
-        self.assertEqual(compose.count('pull_policy: never'),5)
+        images=re.findall(r'(?m)^    image: (\S+)$',compose)
+        self.assertEqual(len(images),5)
+        self.assertEqual(len(set(images)),1,msg='one image for all five services')
+        self.assertRegex(images[0],r'^ghcr\.io/humanitylabs-org/wizard-connectors:sha-[0-9a-f]{40}@sha256:[0-9a-f]{64}$')
+        self.assertNotIn('pull_policy',compose)
+        self.assertNotIn('alpha',version)
         self.assertNotIn('CONNECTORS_IMAGE',compose)
-        self.assertNotRegex(compose,r'^\s+build:',msg='Alpha recipe must use the packaged native image')
+        self.assertNotRegex(compose,r'^\s+build:',msg='release recipe must use the published image')
         self.assertEqual(compose.count('<<: *security'),5)
         self.assertIn('cap_drop: [ALL]',compose)
         self.assertIn('read_only: true',compose)
