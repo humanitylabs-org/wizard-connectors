@@ -11,7 +11,7 @@ services:
   # advertised host, so WAM's per-edge link network resolves it; no shared main network.
   wizard-connectors-calendar:
     <<: *security
-    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-32814063cec88cd99a9750c5f21cf964f099c9c5@sha256:24a2c276338d45a6a55129bfe39ecc5810dc7b33b8bcfabfa1172a7e573af5f0
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-e4b06e54357eeec72b3fa2bb248e4703f2a14347@sha256:e19fa13ee4d326e0bdab4f689fb5e96d6df0b4d609646d7a001ce33832804b29
     command: [python, app/ingress.py]
     networks: [ingress-lane, edge]
     x-runtipi:
