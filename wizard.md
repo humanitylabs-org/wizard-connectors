@@ -5,7 +5,7 @@ renamed_from: [wizard-connectors]
 name: Connected accounts
 type: external
 category: app
-version: 0.2.0
+version: 0.2.1
 summary: Owner-managed Google account broker and simulated private chat summaries.
 license: MIT
 source: https://github.com/humanitylabs-org/wizard-connectors
@@ -35,6 +35,9 @@ system: false
 uses: []
 needs: []
 health: /healthz
+switches:
+  contract: wizard.app-switches/1
+  path: /api/switches
 ---
 # Connected accounts
 Ask your wizard **Set up my Google app**, or choose **Set it up myself** for seven guided screens. Your own main Google account owns one app for all your accounts; your wizard needs no Google account. See docs/GOOGLE_SETUP.md for the secret-free agent intake and shipped browser script.
