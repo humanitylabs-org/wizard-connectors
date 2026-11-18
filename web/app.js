@@ -59,7 +59,7 @@ async function checkGoogleReturn(){
   const account=next.google.accounts.find(x=>a.account?x.id===a.account:!a.before.includes(x.id));
   let closed=false;try{closed=!!a.popup?.closed;}catch{}
   const changed=!a.account||JSON.stringify(account||null)!==a.previous||closed;
-  if(account&&changed&&(!a.calendar||account.scopes.includes('https://www.googleapis.com/auth/calendar.readonly'))&&(!a.gmail||account.scopes.includes(GMAIL_SCOPE))&&(!a.workspace||WORKSPACE_SCOPES.every(x=>account.scopes.includes(x)))){cancelGoogleAuth();state=next;render();}
+  if(account&&changed&&(!a.calendar||account.scopes.includes('https://www.googleapis.com/auth/calendar.readonly'))&&(!a.gmail||account.scopes.includes(GMAIL_SCOPE))&&(!a.workspace||WORKSPACE_SCOPES.every(x=>account.scopes.includes(x)))&&(!a.calendarEdits||account.scopes.includes(CALENDAR_EDIT_SCOPE))){cancelGoogleAuth();state=next;render();}
  }catch{}finally{googleChecking=false;}
 }
 window.addEventListener('focus',checkGoogleReturn);
@@ -67,6 +67,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkGoogl
 let state, view = 'root', overlay = null, calendarPending = false;
 const GMAIL_SCOPE='https://www.googleapis.com/auth/gmail.modify';
 const WORKSPACE_SCOPES=['https://www.googleapis.com/auth/drive.readonly','https://www.googleapis.com/auth/contacts.readonly'];
+const CALENDAR_EDIT_SCOPE='https://www.googleapis.com/auth/calendar.events';
 const detail = $('detail');
 function element(tag, text, cls) {const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 function append(tag,text,cls){const e=element(tag,text,cls);detail.append(e);return e;}
@@ -92,21 +93,21 @@ function render(){detail.replaceChildren();document.body.dataset.view=view;if(!s
 button('← Back',back);if(view==='google')return renderGoogle();}
 async function accountAction(path,data){try{await api(path,data);await refresh();}catch(e){dialog('Could not update account','Try again in a moment. If this keeps happening, sign in again.');}}
 function googleError(code){return ({sign_in_timeout:'This sign-in link is more than a day old. Try again to open a fresh Google sign-in window.',authorization_busy:'There are several unfinished sign-in attempts. Wait a few minutes, then try again.',service_unavailable:'Google connections are temporarily unavailable. Try again in a moment.',google_disabled:'Google connections are turned off. Ask your wizard to enable them, then try again.',google_configuration_required:'Your Google app needs setting up before you can connect an account.',broker_unavailable:'Google connections are temporarily unavailable. Check again in a moment.',provider_unavailable:'Google did not respond. Try again in a moment.',owner_auth_required:'Your owner session has expired. Close and reopen Connected accounts, then try again.',invalid_authorization_url:'Google did not return a safe sign-in link. Try again; if it keeps happening, ask your wizard to check Google setup.',local_storage_unavailable:'Your Wizard could not save the sign-in request. Ask your wizard to check its storage.'})[code]||'Could not prepare Google sign-in. Try again; if it keeps happening, ask your wizard to check Google setup.';}
-async function authorize(account=null,youtube=false,calendar=true,gmail=false,workspace=false){
+async function authorize(account=null,youtube=false,calendar=true,gmail=false,workspace=false,calendarEdits=false){
  if(googleAuth?.status==='pending')return;
  // Open inside the click gesture, before any await. If blocked, the same-screen link remains usable.
  let popup=null;try{popup=window.open('about:blank','_blank');if(popup)popup.opener=null;}catch{}
  const request=++googleAuthRequest;
- googleAuth={status:'pending',account,youtube,calendar,gmail,workspace,popup};render();detail.scrollIntoView({block:'start'});
+ googleAuth={status:'pending',account,youtube,calendar,gmail,workspace,calendarEdits,popup};render();detail.scrollIntoView({block:'start'});
  try{
-  const auth=await api('google/connect',{account,youtube,calendar,...(gmail?{gmail}:{}),...(workspace?{workspace}:{})});
+  const auth=await api('google/connect',{account,youtube,calendar,...(gmail?{gmail}:{}),...(workspace?{workspace}:{}),...(calendarEdits?{calendar_edits:true}:{})});
   const url=new URL(auth.authorization_url);
   if(url.origin!=='https://accounts.google.com'||url.username||url.password)throw new Error('invalid_authorization_url');
   if(request!==googleAuthRequest||view!=='google'){try{popup?.close();}catch{}return;}
   let opened=false;try{if(popup&&!popup.closed){popup.location.replace(url.href);opened=true;}}catch{}
-  googleAuth={status:'ready',account,youtube,calendar,gmail,workspace,url:url.href,popup,opened,before:state.google.accounts.map(x=>x.id),previous:JSON.stringify(state.google.accounts.find(x=>x.id===account)||null),expires:Date.now()+86400000};
+  googleAuth={status:'ready',account,youtube,calendar,gmail,workspace,calendarEdits,url:url.href,popup,opened,before:state.google.accounts.map(x=>x.id),previous:JSON.stringify(state.google.accounts.find(x=>x.id===account)||null),expires:Date.now()+86400000};
   googleWatch=setInterval(()=>{if(!document.hidden)checkGoogleReturn();},5000);render();
- }catch(e){try{popup?.close();}catch{}if(request!==googleAuthRequest||view!=='google')return;googleAuth={status:'error',account,youtube,calendar,gmail,workspace,error:e.message};render();}
+ }catch(e){try{popup?.close();}catch{}if(request!==googleAuthRequest||view!=='google')return;googleAuth={status:'error',account,youtube,calendar,gmail,workspace,calendarEdits,error:e.message};render();}
 }
 function renderGoogleAuthorization(){
  const a=googleAuth;
@@ -120,7 +121,7 @@ function renderGoogleAuthorization(){
   button('Cancel sign-in',()=>{cancelGoogleAuth();render();},detail,'text-button');return;
  }
  append('p',googleError(a.error),'google-status').setAttribute('role','alert');
- button('Try again',()=>authorize(a.account,a.youtube,a.calendar,a.gmail,a.workspace),detail,'primary');
+ button('Try again',()=>authorize(a.account,a.youtube,a.calendar,a.gmail,a.workspace,a.calendarEdits),detail,'primary');
  if(a.error==='google_configuration_required')button('Set up Google app',()=>{cancelGoogleAuth();startGoogleSetup();});
  button('Back to accounts',()=>{cancelGoogleAuth();render();});
 }
@@ -261,6 +262,13 @@ function renderGoogleAccounts(g){
    const tools=googleUseRow(card,'Drive and Contacts');
    if(!workspaceScope)button('Allow',()=>authorize(a.id,youtubeScope,calendarScope,false,true),tools).setAttribute('aria-label','Allow Drive and Contacts');
    else tools.append(element('small','On'));
+  }
+  // Calendar edits for your wizard (switch google-calendar-edits, wizard-connectors#29): the Google app's calendar tools
+  // add, move and delete events on this account. What agents may do stays Calendar > Settings > Agent access.
+  if(state.calendar_edits?.on){
+   const edits=googleUseRow(card,'Calendar edits');
+   if(!a.scopes.includes(CALENDAR_EDIT_SCOPE))button('Allow',()=>authorize(a.id,youtubeScope,calendarScope,false,false,true),edits).setAttribute('aria-label','Allow Calendar edits');
+   else edits.append(element('small','On'));
   }
   const musicBound=g.bindings.some(b=>b.account===a.id);
   if(youtubeScope){

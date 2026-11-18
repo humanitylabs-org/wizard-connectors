@@ -31,10 +31,18 @@ GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
 DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
 CONTACTS_SCOPE = 'https://www.googleapis.com/auth/contacts.readonly'
 WORKSPACE_SCOPES = {'drive': DRIVE_SCOPE, 'contacts': CONTACTS_SCOPE}
-SCOPES = IDENTITY | {YOUTUBE, CALENDAR, GMAIL_SCOPE, DRIVE_SCOPE, CONTACTS_SCOPE}
+# Calendar edits for the agent through the Google app (wizard-connectors#29, switch google-calendar-edits): events only,
+# asked per account on the owner's Allow. Who may edit is Calendar > Settings > Agent access, kept by the Google app.
+CALENDAR_EDIT_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
+SCOPES = IDENTITY | {YOUTUBE, CALENDAR, GMAIL_SCOPE, DRIVE_SCOPE, CONTACTS_SCOPE, CALENDAR_EDIT_SCOPE}
 GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me/'
 # Fixed read-only hosts for google_workspace.py (GET only).
 WORKSPACE_API = ('https://www.googleapis.com/drive/v3/files', 'https://people.googleapis.com/v1/people:searchContacts')
+# The one Google Calendar path the Google app may call on an account (calendar_http): a calendar's events, or one event.
+CALENDAR_EVENTS_URL = re.compile(r'https://www\.googleapis\.com/calendar/v3/calendars/([A-Za-z0-9._~%@+-]{1,900})/events(?:/([A-Za-z0-9_@.-]{1,1024}))?')
+CALENDAR_QUERY = {'sendUpdates': ('all', 'externalOnly', 'none'), 'singleEvents': ('true', 'false'), 'orderBy': ('startTime', 'updated'),
+                  'maxResults': None, 'timeMin': None, 'timeMax': None, 'q': None, 'pageToken': None}
+MAX_CALENDAR_BODY = 64 * 1024
 # Keep in step with skill/scripts/google_cloud_setup.py APIS (wizard-connectors#19, #27).
 REQUIRED_APIS = ('calendar-json.googleapis.com', 'gmail.googleapis.com', 'youtube.googleapis.com',
                  'drive.googleapis.com', 'people.googleapis.com')
@@ -127,6 +135,26 @@ class GoogleTransport:
         except Denied: raise
         except Exception: raise Denied('provider_unavailable') from None
 
+    def calendar(self, method, url, token, query=None, body=None):
+        """One Calendar events call (checked by calendar_request first). DELETE answers {}."""
+        calendar_request(method, url, query, body)
+        if query: url += '?' + urlencode(query)
+        headers = {'Accept': 'application/json', 'Authorization': 'Bearer ' + token}
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode(); headers['Content-Type'] = 'application/json'
+        try:
+            with build_opener(ProxyHandler({}), NoRedirect()).open(Request(url, data=data, headers=headers, method=method), timeout=60) as r:
+                raw = r.read(MAX_OUTPUT_BYTES + 1)
+                if len(raw) > MAX_OUTPUT_BYTES: raise Denied('too_large')
+                return json.loads(raw) if raw else {}
+        except HTTPError as e:
+            code = {401: 'reauth_required', 403: 'google_permission_missing', 404: 'not_found', 410: 'not_found',
+                    400: 'invalid_arguments', 409: 'conflict', 412: 'conflict', 429: 'rate_limited'}.get(e.code, 'provider_unavailable')
+            raise Denied(code) from None
+        except Denied: raise
+        except Exception: raise Denied('provider_unavailable') from None
+
     def verify(self, encoded, client_id, nonce=None):
         try:
             header = jwt.get_unverified_header(encoded)
@@ -193,6 +221,27 @@ def validate_redirect(value):
 def validate_calendar_id(value):
     if not isinstance(value, str) or not 1 <= len(value) <= 300 or any(ord(c) < 32 or ord(c) == 127 for c in value):
         raise Denied('invalid_calendar_id')
+
+
+def calendar_request(method, url, query=None, body=None):
+    """The Google app's Calendar call (calendar_http), checked before any token is used: GET/POST on one calendar's
+    events, GET/PATCH/DELETE on one event, a few known query keys, a JSON object body. Nothing else at Google."""
+    from urllib.parse import unquote
+    m = CALENDAR_EVENTS_URL.fullmatch(url) if isinstance(url, str) else None
+    if not m or method not in ('GET', 'POST', 'PATCH', 'DELETE'): raise Denied('invalid_arguments')
+    calendar, event = unquote(m.group(1)), m.group(2)
+    validate_calendar_id(calendar)
+    # One canonical spelling only (no %2F, no dot segments): the path Google sees is the path checked here.
+    if quote(calendar, safe='') != m.group(1) or any(c in calendar for c in '/\\') or '..' in calendar \
+            or event in ('.', '..'): raise Denied('invalid_arguments')
+    if method not in (('GET', 'POST') if event is None else ('GET', 'PATCH', 'DELETE')): raise Denied('invalid_arguments')
+    if query is not None:
+        if not isinstance(query, dict) or len(query) > len(CALENDAR_QUERY): raise Denied('invalid_arguments')
+        for k, v in query.items():
+            if k not in CALENDAR_QUERY or isinstance(v, bool) or not isinstance(v, (str, int)) or len(str(v)) > 512: raise Denied('invalid_arguments')
+            if CALENDAR_QUERY[k] and str(v) not in CALENDAR_QUERY[k]: raise Denied('invalid_arguments')
+    if body is not None and (method not in ('POST', 'PATCH') or not isinstance(body, dict) or len(json.dumps(body)) > MAX_CALENDAR_BODY):
+        raise Denied('invalid_arguments')
 
 
 def calendar_window(time_min, time_max):
@@ -280,7 +329,7 @@ class Broker:
                     'required_apis': list(REQUIRED_APIS),
                     'required_scopes': sorted(IDENTITY | {CALENDAR}), 'agreements': self.agreement_status(),
                     # Asked per account only when the owner taps Allow on its Mail row.
-                    'optional_scopes': [GMAIL_SCOPE, DRIVE_SCOPE, CONTACTS_SCOPE]}
+                    'optional_scopes': [GMAIL_SCOPE, DRIVE_SCOPE, CONTACTS_SCOPE, CALENDAR_EDIT_SCOPE]}
 
     def setup_begin(self, redirect_uri):
         validate_redirect(redirect_uri)
@@ -353,7 +402,7 @@ class Broker:
                     'music': {'state': 'bound' if binding else 'unbound', 'provider': 'youtube-music',
                               'catalog': 'youtube-data-api', 'playback': 'separate_existing_app',
                               'playback_entitlement': False}}
-    def start(self, browser, account=None, youtube=False, calendar=False, gmail=False, workspace=False):
+    def start(self, browser, account=None, youtube=False, calendar=False, gmail=False, workspace=False, calendar_edits=False):
         with self.lock:
             self._ready()
             if account and account not in self.state['accounts']: raise Denied('account_not_found')
@@ -362,6 +411,7 @@ class Broker:
             state, verifier, nonce = (secrets.token_urlsafe(32) for _ in range(3))
             scopes = IDENTITY | ({YOUTUBE} if youtube else set()) | ({CALENDAR} if calendar else set()) | ({GMAIL_SCOPE} if gmail is True else set())
             if workspace is True: scopes |= set(WORKSPACE_SCOPES.values())
+            if calendar_edits is True: scopes |= {CALENDAR_EDIT_SCOPE}
             if account: scopes |= set(self.state['accounts'][account]['scopes'])
             self.pending[state] = {'browser': hashlib.sha256(browser.encode()).hexdigest(), 'verifier': verifier,
                                    'nonce': nonce, 'expires': time.time()+SIGN_IN_WINDOW, 'account': account, 'scopes': sorted(scopes)}
@@ -706,3 +756,43 @@ class Broker:
                     if aid in self.state['accounts']: self._invalidate(aid, e)
             raise
         return {'source': 'google', 'via': 'connected-accounts', 'account': email, **result}
+
+    # ---------- Calendar edits for the agent through the Google app (wizard-connectors#29, switch google-calendar-edits) ----------
+    def calendar_edit_status(self):
+        """Accounts and whether each allowed Calendar edits. No events, no tokens."""
+        with self.lock:
+            blocked = self.gate()
+            return {'accounts': [{'email': a.get('email', ''), 'status': a['status'] if not blocked else 'reauth_required',
+                                  'calendar_edits': CALENDAR_EDIT_SCOPE in a['scopes']}
+                                 for a in self.state['accounts'].values() if a.get('email')],
+                    'blocker': blocked}
+
+    def calendar_http(self, method, url, account=None, query=None, body=None):
+        """One Calendar events call for the Google app, on an account that allowed Calendar edits. The Google app has
+        already applied the owner's Calendar > Settings > Agent access level (its agent_access.py)."""
+        calendar_request(method, url, query, body)
+        with self.lock:
+            self._ready()
+            have = [(aid, a) for aid, a in self.state['accounts'].items() if CALENDAR_EDIT_SCOPE in a['scopes'] and a.get('email')]
+            if account in (None, ''):
+                if len(have) != 1: raise Denied('account_required' if have else 'not_connected')
+                aid, a = have[0]
+            else:
+                if not isinstance(account, str) or len(account) > 254: raise Denied('invalid_arguments')
+                found = [(i, x) for i, x in have if x['email'].lower() == account.strip().lower()]
+                if not found:
+                    known = any(x.get('email', '').lower() == account.strip().lower() for x in self.state['accounts'].values())
+                    raise Denied('permission_missing' if known else 'account_not_found')
+                aid, a = found[0]
+            if a['status'] != 'active': raise Denied('reauth_required')
+            try: a = self._refresh(aid)
+            except Denied as e:
+                self._invalidate(aid, e); raise
+            token, email = a['access_token'], a.get('email', '')
+        try: value = self.provider.calendar(method, url, token, query, body)
+        except Denied as e:
+            if str(e) == 'reauth_required':
+                with self.lock:
+                    if aid in self.state['accounts']: self._invalidate(aid, e)
+            raise
+        return {'source': 'google', 'via': 'connected-accounts', 'account': email, 'response': value}
