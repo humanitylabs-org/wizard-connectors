@@ -21,6 +21,14 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
+# Shipped agent setup scripts, served beside the app so the agent on the host has them
+# next to the installed SKILL.md (wizard-connectors#38). Fixed allowlist, no path input.
+SKILL_SCRIPTS = {'/skill/scripts/' + n: n for n in ('google_cloud_setup.py', 'google_agreement_definitions.py')}
+
+
+def skill_scripts():
+    return [{'path': path, 'sha256': hashlib.sha256((ROOT / 'skill/scripts' / name).read_bytes()).hexdigest()}
+            for path, name in SKILL_SCRIPTS.items()]
 OWNER = os.environ.get("CONNECTORS_OWNER_TOKEN", "")
 MCP = os.environ.get("CONNECTORS_MCP_TOKEN", "")
 MUSIC = os.environ.get('MUSIC_ADAPTER_TOKEN','')
@@ -337,6 +345,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200,(ROOT/'web/google-connected.html').read_bytes(),'text/html; charset=utf-8',cookie='connectors_oauth=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
         if path == "/healthz":
             return self.send(200, {"ok": True, "app": "wizard-connectors", "synthetic_only": True})
+        if path in SKILL_SCRIPTS:
+            # wizard-connectors#38: the host copy of the app skill is SKILL.md only, so the
+            # agent fetches the shipped setup script and its registry from here (public code).
+            return self.send(200, (ROOT / 'skill/scripts' / SKILL_SCRIPTS[path]).read_bytes(), 'text/x-python; charset=utf-8')
         static = {"/": "index.html", "/app.js":"app.js", "/boot.js":"boot.js", "/styles.css":"styles.css", "/wizard-ui.css":"wizard-ui.css", "/google-callback.js":"google-callback.js"}
         if path in static:
             p = ROOT / "web" / static[path]
@@ -517,6 +529,7 @@ class Handler(BaseHTTPRequestHandler):
             elif name in ('google_app_setup_status', 'google_app_setup_begin') and args == {}:
                 try:
                     content = broker.call('setup_status', redirect_uri=self.callback_guess())
+                    if name == 'google_app_setup_status': content = {**content, 'scripts': skill_scripts()}
                     if name == 'google_app_setup_begin':
                         intake = broker.call('setup_begin', redirect_uri=content['redirect_uri'])
                         content = {'intake_url': 'http://wizard-connectors-calendar:8799/api/google/setup/intake#' + intake['token'],

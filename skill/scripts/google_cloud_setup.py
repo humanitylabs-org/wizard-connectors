@@ -482,14 +482,37 @@ class Console:
         return values
 
 
+NO_AGREEMENTS = {'accepted': [], 'version': '', 'country': ''}
+
+
+def project_number(value):
+    # Public numeric prefix of the saved client ID (google_app_setup_status
+    # `project_number`); Console opens a project by its number as well as its ID.
+    if value in (None, ''): return None
+    if not isinstance(value, str) or not re.fullmatch(r'[1-9][0-9]{5,19}', value): raise NeedsOwner('invalid_project_id')
+    return value
+
+
 def run(args, page):
-    recorded = parse_agreements(args.agreements)
-    if set(recorded['accepted']) != IDS: raise NeedsOwner('review_google_agreements_in_connected_accounts')
-    c = Console(page, project=args.project, audience=args.audience, agreements=recorded, allow_accept=not args.dry_run)
+    if args.step == 'api' and not args.dry_run:
+        # wizard-connectors#38: turning on an API in a project the owner already owns
+        # accepts no new Google terms, so an app set up by hand (no agreements recorded
+        # in Connected accounts) still gets its missing APIs. A Google terms screen
+        # still stops with needs_owner: nothing unrecorded is ever accepted.
+        try: recorded = parse_agreements(args.agreements)
+        except NeedsOwner: recorded = dict(NO_AGREEMENTS)
+    else:
+        recorded = parse_agreements(args.agreements)
+        if set(recorded['accepted']) != IDS: raise NeedsOwner('review_google_agreements_in_connected_accounts')
+    # The configured app's own project (from its client ID) wins over a name guess
+    # or a state file left by another setup; an explicit --project wins over both.
+    number = project_number(getattr(args, 'project_number', None))
+    c = Console(page, project=args.project or number, audience=args.audience, agreements=recorded, allow_accept=not args.dry_run)
     if args.state_file.exists():
         data = json.loads(args.state_file.read_text())
         c.project = c.project or data.get('project')
-    if c.project and not re.fullmatch(r'[a-z][a-z0-9-]{4,28}[a-z0-9]', c.project): raise NeedsOwner('invalid_project_id')
+    if c.project and not (re.fullmatch(r'[a-z][a-z0-9-]{4,28}[a-z0-9]', c.project) or c.project == number):
+        raise NeedsOwner('invalid_project_id')
     if args.dry_run:
         c.go('/auth/overview')
         return
@@ -525,6 +548,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--step', choices=['all','project','api','branding','audience','client'], default='all')
     parser.add_argument('--project')
+    parser.add_argument('--project-number', default=os.environ.get('GOOGLE_SETUP_PROJECT_NUMBER'),
+                        help='project_number from MCP google_app_setup_status: the configured app\'s own project')
 
     parser.add_argument('--agreements', default=os.environ.get('GOOGLE_SETUP_AGREEMENTS'), help='JSON agreements object from MCP status/begin')
     parser.add_argument('--audience', choices=['External','Internal'], default='External')

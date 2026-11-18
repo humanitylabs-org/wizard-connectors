@@ -323,7 +323,11 @@ class Broker:
         validate_redirect(redirect_uri)
         with self.lock:
             c = self.client_status()
+            # Public numeric prefix of the client ID (not a secret): the project that owns the
+            # configured app, so --step api opens it without guessing by name (wizard-connectors#38).
+            number = re.match(r'([1-9][0-9]{5,19})-', c['client_id'] or '') if c['client_configured'] else None
             return {'configured': c['client_configured'], 'managed': c['client_source'] == 'env',
+                    'project_number': number.group(1) if number else '',
                     'redirect_uri': c['redirect_uri'] or redirect_uri,
                     # Every API this broker serves, all enabled by the agent setup in one run.
                     'required_apis': list(REQUIRED_APIS),
