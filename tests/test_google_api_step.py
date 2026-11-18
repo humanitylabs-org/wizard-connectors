@@ -34,7 +34,8 @@ class GmailApiSetupTests(unittest.TestCase):
     """wizard-connectors#19: the agent setup turns on every API the broker serves."""
 
     def test_setup_script_enables_calendar_gmail_and_youtube(self):
-        self.assertEqual(script.APIS, ('calendar-json.googleapis.com', 'gmail.googleapis.com', 'youtube.googleapis.com'))
+        self.assertEqual(script.APIS, ('calendar-json.googleapis.com', 'gmail.googleapis.com', 'youtube.googleapis.com',
+                                       'drive.googleapis.com', 'people.googleapis.com'))
         c = RecordingConsole(agreements=AGREEMENTS)
         c.api()
         self.assertEqual(c.opened, ['/apis/library/' + a for a in script.APIS])
