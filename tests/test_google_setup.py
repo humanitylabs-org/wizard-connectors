@@ -57,7 +57,7 @@ class SetupIntakeTests(unittest.TestCase):
             self.assertEqual(self.mcp('google_app_setup_begin', auth=auth)[0],401)
         raw=json.dumps(self.mcp('google_app_setup_status')[1])
         for value in ('FAKE_CLIENT_SECRET','fixture-client','client_secret','client_id'): self.assertNotIn(value,raw)
-        self.assertIn('calendar-json.googleapis.com',raw)
+        self.assertIn('calendar-json.googleapis.com',raw);self.assertIn('gmail.googleapis.com',raw)
         self.assertIn('operation_denied',json.dumps(self.mcp('google_app_setup_begin', {'redirect_uri':'https://evil.invalid'})[1]))
         self.assertIn('client_managed_by_environment',json.dumps(self.mcp('google_app_setup_begin')[1]))
 

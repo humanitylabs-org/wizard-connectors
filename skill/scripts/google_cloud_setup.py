@@ -21,6 +21,11 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from google_agreement_definitions import IDS, VERSION, COUNTRIES, DOCUMENTS
 
+# Every Google API the Connected accounts broker serves. Keep in step with
+# app/google_broker.py REQUIRED_APIS: an API missing here leaves the owner a manual
+# Console visit (wizard-connectors#19: Gmail for Mail answered 403 until enabled).
+APIS = ('calendar-json.googleapis.com', 'gmail.googleapis.com', 'youtube.googleapis.com')
+
 
 def parse_agreements(value):
     try:
@@ -328,7 +333,7 @@ class Console:
             c.click()
             self.p.get_by_role('option', name=value, exact=True).click()
 
-    def project_setup(self):
+    def project_setup(self, create=True):
         if self.project:
             self.go('/home/dashboard')
             return
@@ -345,7 +350,9 @@ class Console:
         # Require the resource table to load; an empty/loading screen is not absence.
         # Real Console renders the resource list as bare rows (no table/grid role).
         self.p.get_by_role('table').or_(self.p.get_by_role('row')).first.wait_for()
-        if self.visible(row): return self.project_setup()
+        if self.visible(row): return self.project_setup(create)
+        # The API-only step never creates: an owner set up earlier keeps their project.
+        if not create: raise NeedsOwner('choose_existing_project_with_project_flag')
         self.go('/projectcreate')
         self.p.get_by_label(re.compile(r'^Project name', re.I)).or_(self.p.locator('input[id$="-name-input"]')).first.fill('Wizard')
         edit = self.button(r'^Edit\b')  # Real Console: "Edit the project id."
@@ -360,7 +367,11 @@ class Console:
         self.go('/home/dashboard')
 
     def api(self):
-        self.go('/apis/library/calendar-json.googleapis.com')
+        # Idempotent: an API that is already on is only read back (Manage), never toggled.
+        for name in APIS: self.enable_api(name)
+
+    def enable_api(self, name):
+        self.go('/apis/library/' + name)
         enable = self.button(r'^Enable(?: this API)?$')
         # Both states need a loaded page; wait for either action before deciding.
         enable.or_(self.button(r'^Manage(?: this API)?$')).first.wait_for(timeout=30000)
@@ -481,8 +492,12 @@ def run(args, page):
     if args.dry_run:
         c.go('/auth/overview')
         return
-    if not args.intake_url or not args.redirect_uri: raise NeedsOwner('get_setup_begin_from_mcp_first')
-    intake_target(args.intake_url)
+    if args.step == 'api':
+        # Turning on a missing API (e.g. Gmail for an app set up for Calendar only) deposits
+        # nothing, so it needs no intake capability and never creates a project.
+        if not c.project: c.project_setup(create=False)
+    elif not args.intake_url or not args.redirect_uri: raise NeedsOwner('get_setup_begin_from_mcp_first')
+    else: intake_target(args.intake_url)
     if args.step == 'all' or args.step == 'project':
         emit('project', 'running')
         c.project_setup()

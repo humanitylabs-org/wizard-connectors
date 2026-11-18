@@ -29,6 +29,8 @@ CALENDAR = 'https://www.googleapis.com/auth/calendar.readonly'
 GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
 SCOPES = IDENTITY | {YOUTUBE, CALENDAR, GMAIL_SCOPE}
 GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me/'
+# Keep in step with skill/scripts/google_cloud_setup.py APIS (wizard-connectors#19).
+REQUIRED_APIS = ('calendar-json.googleapis.com', 'gmail.googleapis.com', 'youtube.googleapis.com')
 MAX_GMAIL_BYTES = 40 * 1024 * 1024  # a draft's attachments come back base64 (18 MB of files)
 MAX_PAGES = 3
 # Owners work asynchronously: a sign-in link stays usable for a day, not minutes.
@@ -247,10 +249,11 @@ class Broker:
             c = self.client_status()
             return {'configured': c['client_configured'], 'managed': c['client_source'] == 'env',
                     'redirect_uri': c['redirect_uri'] or redirect_uri,
-                    'required_apis': ['calendar-json.googleapis.com'],
+                    # Every API this broker serves, all enabled by the agent setup in one run.
+                    'required_apis': list(REQUIRED_APIS),
                     'required_scopes': sorted(IDENTITY | {CALENDAR}), 'agreements': self.agreement_status(),
-                    # Only for Mail (switch gmail-for-mail): enable the Gmail API in the same project.
-                    'optional_apis': ['gmail.googleapis.com'], 'optional_scopes': [GMAIL_SCOPE]}
+                    # Asked per account only when the owner taps Allow on its Mail row.
+                    'optional_scopes': [GMAIL_SCOPE]}
 
     def setup_begin(self, redirect_uri):
         validate_redirect(redirect_uri)

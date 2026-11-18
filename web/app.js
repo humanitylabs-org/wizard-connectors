@@ -144,7 +144,7 @@ function renderGoogleApp(g){
  append('small','Your wizard does not need its own Google account. You choose what each connected account can share.');
 }
 function renderGoogleSteps(g){
- const titles=['Use your own Google account','Create your Google Cloud project','Enable Google Calendar API','Set up Google Auth Platform','Create a Web application client','Save your Google app','Connect your accounts'];
+ const titles=['Use your own Google account','Create your Google Cloud project','Enable Google Calendar, Gmail and YouTube','Set up Google Auth Platform','Create a Web application client','Save your Google app','Connect your accounts'];
  append('small',googleStep+' of 7','google-progress').setAttribute('aria-live','polite');
  const progress=append('progress');progress.max=7;progress.value=googleStep;progress.setAttribute('aria-label','Google app setup progress');
  append('h2',titles[googleStep-1]);
@@ -162,7 +162,7 @@ function renderGoogleSteps(g){
   const l=append('label','Project ID (optional)','wz-label'),i=element('input',undefined,'wz-input');i.value=googleProject;i.placeholder='wizard-…';i.pattern='[a-z][a-z0-9-]{4,28}[a-z0-9]';i.oninput=()=>{googleProject=i.validity.valid?i.value:'';};l.append(i);
   append('small','If Google asks you to accept Cloud terms, review and accept them yourself. No billing or paid service is needed for this setup.');
  }
- if(googleStep===3){append('p','In this project, open Google Calendar API and choose Enable. If it is already enabled, continue.');googleLink('Open Google Calendar API','/apis/library/calendar-json.googleapis.com');}
+ if(googleStep===3){append('p','In this project, open each API below and choose Enable: Google Calendar API, Gmail API (for Mail) and YouTube Data API v3 (for Music). If one is already enabled, go on to the next.');googleLink('Open Google Calendar API','/apis/library/calendar-json.googleapis.com');googleLink('Open Gmail API','/apis/library/gmail.googleapis.com');googleLink('Open YouTube Data API v3','/apis/library/youtube.googleapis.com');}
  if(googleStep===4){
   append('p','In Google Auth Platform, choose Get started. Name the app Wizard and use your own email for support and contact information.');
   append('p',googleAudience==='Internal'?'Choose Internal for your company Workspace organization.':'Choose External. Then open Audience → Publish app → Confirm so its status is In production. Publishing avoids the 7-day logouts of Testing mode.');
