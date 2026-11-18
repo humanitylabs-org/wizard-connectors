@@ -1,3 +1,7 @@
+# Connected accounts 0.5.1
+
+- **The Google app can use this sign-in** (humanitylabs-org/wizard-google#20). The Google app (`wizard-google`, behind its own switch `connected-accounts`) asks Connected accounts at `/service/google/v1/<tool>` for Drive, Docs, Sheets, Contacts and Gmail search/read/draft, so it needs no second Google sign-in. Only with the Google app's App Manager grant and this app's `google-workspace` switch on; agents keep the owner's mail level and never send. See docs/GOOGLE_TOOLS.md.
+
 # Connected accounts 0.5.0
 
 - **Google tools for your wizard** (wizard-connectors#27; switch `google-workspace`, off by default). The agent lists Drive files, reads Docs, Sheets and Slides, looks up contacts and writes Gmail drafts through the Google account connected here, with no second Google sign-in. Each account gets a **Drive and Contacts** row: Allow adds read-only Drive and Contacts access. Mail drafts keep the owner's level for agents; agents never send. The agent setup also turns on the Drive and People APIs. See [GOOGLE_TOOLS.md](GOOGLE_TOOLS.md).
