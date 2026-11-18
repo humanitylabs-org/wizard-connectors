@@ -1,3 +1,7 @@
+# Connected accounts 0.6.0
+
+- **Calendar edits for your wizard** (wizard-connectors#29; switch `google-calendar-edits`, off by default). The Google app's calendar tools add, move and delete events on the Google account connected here, so there is no sign-in in the Google app. Each account gets a **Calendar edits** row: Allow adds Google's events permission (`calendar.events`). What agents may do stays Calendar > Settings > Agent access, checked by the Google app as before. Needs the Google app with wizard-google#24. See [GOOGLE_TOOLS.md](GOOGLE_TOOLS.md).
+
 # Connected accounts 0.5.1
 
 - **The Google app can use this sign-in** (humanitylabs-org/wizard-google#20). The Google app (`wizard-google`, behind its own switch `connected-accounts`) asks Connected accounts at `/service/google/v1/<tool>` for Drive, Docs, Sheets, Contacts and Gmail search/read/draft, so it needs no second Google sign-in. Only with the Google app's App Manager grant and this app's `google-workspace` switch on; agents keep the owner's mail level and never send. See docs/GOOGLE_TOOLS.md.
