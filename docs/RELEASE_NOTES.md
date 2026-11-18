@@ -1,3 +1,7 @@
+# Connected accounts 0.6.1
+
+- **Gmail for Mail on a Google app set up by hand** (wizard-connectors#38; fix, on for everyone). The agent's `--step api` turns on missing Google APIs (Gmail for Mail) without agreements recorded in Connected accounts, opens the configured app's own project by its number instead of looking for a project named "Wizard", and can fetch the setup scripts from this app when the host copy of the skill has none. A Google terms screen still stops for the owner.
+
 # Connected accounts 0.6.0
 
 - **Calendar edits for your wizard** (wizard-connectors#29; switch `google-calendar-edits`, off by default). The Google app's calendar tools add, move and delete events on the Google account connected here, so there is no sign-in in the Google app. Each account gets a **Calendar edits** row: Allow adds Google's events permission (`calendar.events`). What agents may do stays Calendar > Settings > Agent access, checked by the Google app as before. Needs the Google app with wizard-google#24. See [GOOGLE_TOOLS.md](GOOGLE_TOOLS.md).
