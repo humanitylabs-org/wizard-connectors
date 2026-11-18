@@ -1,3 +1,7 @@
+# Connected accounts 0.3.1
+
+- **Fix: the agent's Google setup also turns on the Gmail API** (and the YouTube Data API for Music), so Gmail for Mail no longer needs a Google Cloud visit (wizard-connectors#19). For an app set up earlier for Calendar only, the agent runs the setup script's `--step api`, which turns on just the missing APIs. "Set it up myself" step 3 links all three.
+
 # Connected accounts 0.3.0
 
 - **Gmail for Mail** (switch `gmail-for-mail`, off by default; wizard-connectors#15). Mail reads, searches and drafts Gmail through the Google account connected here: one Google app, one sign-in, no Composio. Each account gets a Mail row (Allow adds Gmail access) and an "Agents and your mail" level (Draft only by default; agents never send). Turn on the Gmail API in the same Google Cloud project. See [MAIL_API.md](MAIL_API.md).
