@@ -1,3 +1,7 @@
+# Connected accounts 0.4.0
+
+- **Connect Gmail from inside Mail** (wizard-connectors#21; Mail's switch `connect-gmail-in-mail`, off by default). Mail's Continue to Google asks Connected accounts (`POST /service/mail/v1/connect`, the owner's own tap only, never an agent) to start Google's sign-in with the Gmail scope; Google's Allow is the owner's only step, and the tap turns Gmail for Mail on here by itself. The skill tells the agent what to do for "connect my Gmail to Mail". See [MAIL_API.md](MAIL_API.md).
+
 # Connected accounts 0.3.1
 
 - **Fix: the agent's Google setup also turns on the Gmail API** (and the YouTube Data API for Music), so Gmail for Mail no longer needs a Google Cloud visit (wizard-connectors#19). For an app set up earlier for Calendar only, the agent runs the setup script's `--step api`, which turns on just the missing APIs. "Set it up myself" step 3 links all three.
