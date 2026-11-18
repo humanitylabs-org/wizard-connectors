@@ -42,7 +42,8 @@ def service(role, broker=None):
                     'save_agreements':b.save_agreements,
                     'setup_status':b.setup_status,'setup_begin':b.setup_begin,'setup_deposit':b.setup_deposit,
                     'calendar_status':b.calendar_status,'calendar_calendars':b.calendar_calendars,'calendar_events':b.calendar_events,
-                    'mail_status':b.mail_status,'mail_call':b.mail_call}
+                    'mail_status':b.mail_status,'mail_call':b.mail_call,
+                    'workspace_status':b.workspace_status,'workspace_call':b.workspace_call}
         port,token=8800,os.environ.get('BROKER_TOKEN','')
     elif role=='media':
         # This role has no Google volume, broker token, or credential-bearing env.

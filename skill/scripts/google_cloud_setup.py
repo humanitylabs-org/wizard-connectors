@@ -24,7 +24,8 @@ from google_agreement_definitions import IDS, VERSION, COUNTRIES, DOCUMENTS
 # Every Google API the Connected accounts broker serves. Keep in step with
 # app/google_broker.py REQUIRED_APIS: an API missing here leaves the owner a manual
 # Console visit (wizard-connectors#19: Gmail for Mail answered 403 until enabled).
-APIS = ('calendar-json.googleapis.com', 'gmail.googleapis.com', 'youtube.googleapis.com')
+APIS = ('calendar-json.googleapis.com', 'gmail.googleapis.com', 'youtube.googleapis.com',
+        'drive.googleapis.com', 'people.googleapis.com')
 
 
 def parse_agreements(value):

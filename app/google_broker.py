@@ -27,10 +27,17 @@ CALENDAR = 'https://www.googleapis.com/auth/calendar.readonly'
 # Gmail for Mail (wizard-connectors#15, switch `gmail-for-mail`): read, search, label changes and drafts. Sending
 # stays the owner's tap in Mail; agents never send (mail_access.py).
 GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
-SCOPES = IDENTITY | {YOUTUBE, CALENDAR, GMAIL_SCOPE}
+# Drive, Docs, Sheets and Contacts for the agent (wizard-connectors#27, switch `google-workspace`): read-only.
+DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+CONTACTS_SCOPE = 'https://www.googleapis.com/auth/contacts.readonly'
+WORKSPACE_SCOPES = {'drive': DRIVE_SCOPE, 'contacts': CONTACTS_SCOPE}
+SCOPES = IDENTITY | {YOUTUBE, CALENDAR, GMAIL_SCOPE, DRIVE_SCOPE, CONTACTS_SCOPE}
 GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me/'
-# Keep in step with skill/scripts/google_cloud_setup.py APIS (wizard-connectors#19).
-REQUIRED_APIS = ('calendar-json.googleapis.com', 'gmail.googleapis.com', 'youtube.googleapis.com')
+# Fixed read-only hosts for google_workspace.py (GET only).
+WORKSPACE_API = ('https://www.googleapis.com/drive/v3/files', 'https://people.googleapis.com/v1/people:searchContacts')
+# Keep in step with skill/scripts/google_cloud_setup.py APIS (wizard-connectors#19, #27).
+REQUIRED_APIS = ('calendar-json.googleapis.com', 'gmail.googleapis.com', 'youtube.googleapis.com',
+                 'drive.googleapis.com', 'people.googleapis.com')
 MAX_GMAIL_BYTES = 40 * 1024 * 1024  # a draft's attachments come back base64 (18 MB of files)
 MAX_PAGES = 3
 # Owners work asynchronously: a sign-in link stays usable for a day, not minutes.
@@ -93,6 +100,26 @@ class GoogleTransport:
                 raw = r.read(MAX_GMAIL_BYTES + 1)
                 if len(raw) > MAX_GMAIL_BYTES: raise Denied('provider_response_too_large')
                 return json.loads(raw) if raw else {}
+        except HTTPError as e:
+            code = {401: 'reauth_required', 403: 'google_permission_missing', 404: 'not_found',
+                    400: 'invalid_arguments', 429: 'rate_limited'}.get(e.code, 'provider_unavailable')
+            raise Denied(code) from None
+        except Denied: raise
+        except Exception: raise Denied('provider_unavailable') from None
+
+    def workspace(self, url, token, query=None, raw=False):
+        """One read-only Drive or People call (google_workspace.py). raw=True answers the body as text."""
+        if not isinstance(url, str) or not any(url == p or (p.endswith('/files') and url.startswith(p + '/')) for p in WORKSPACE_API) \
+                or '..' in url or any(c in url for c in '?#\\%') or any(ord(c) < 33 for c in url):
+            raise Denied('invalid_arguments')
+        if query: url += '?' + urlencode(query)
+        headers = {'Accept': '*/*' if raw else 'application/json', 'Authorization': 'Bearer ' + token}
+        try:
+            with build_opener(ProxyHandler({}), NoRedirect()).open(Request(url, headers=headers, method='GET'), timeout=60) as r:
+                body = r.read(MAX_OUTPUT_BYTES + 1)
+                if len(body) > MAX_OUTPUT_BYTES: raise Denied('too_large')
+                if raw: return body.decode('utf-8', 'replace')
+                return json.loads(body) if body else {}
         except HTTPError as e:
             code = {401: 'reauth_required', 403: 'google_permission_missing', 404: 'not_found',
                     400: 'invalid_arguments', 429: 'rate_limited'}.get(e.code, 'provider_unavailable')
@@ -253,7 +280,7 @@ class Broker:
                     'required_apis': list(REQUIRED_APIS),
                     'required_scopes': sorted(IDENTITY | {CALENDAR}), 'agreements': self.agreement_status(),
                     # Asked per account only when the owner taps Allow on its Mail row.
-                    'optional_scopes': [GMAIL_SCOPE]}
+                    'optional_scopes': [GMAIL_SCOPE, DRIVE_SCOPE, CONTACTS_SCOPE]}
 
     def setup_begin(self, redirect_uri):
         validate_redirect(redirect_uri)
@@ -326,7 +353,7 @@ class Broker:
                     'music': {'state': 'bound' if binding else 'unbound', 'provider': 'youtube-music',
                               'catalog': 'youtube-data-api', 'playback': 'separate_existing_app',
                               'playback_entitlement': False}}
-    def start(self, browser, account=None, youtube=False, calendar=False, gmail=False):
+    def start(self, browser, account=None, youtube=False, calendar=False, gmail=False, workspace=False):
         with self.lock:
             self._ready()
             if account and account not in self.state['accounts']: raise Denied('account_not_found')
@@ -334,6 +361,7 @@ class Broker:
             if len(self.pending) >= 32: raise Denied('authorization_busy')
             state, verifier, nonce = (secrets.token_urlsafe(32) for _ in range(3))
             scopes = IDENTITY | ({YOUTUBE} if youtube else set()) | ({CALENDAR} if calendar else set()) | ({GMAIL_SCOPE} if gmail is True else set())
+            if workspace is True: scopes |= set(WORKSPACE_SCOPES.values())
             if account: scopes |= set(self.state['accounts'][account]['scopes'])
             self.pending[state] = {'browser': hashlib.sha256(browser.encode()).hexdigest(), 'verifier': verifier,
                                    'nonce': nonce, 'expires': time.time()+SIGN_IN_WINDOW, 'account': account, 'scopes': sorted(scopes)}
@@ -630,3 +658,51 @@ class Broker:
                     if aid in self.state['accounts']: self._invalidate(aid, e)
             raise
         return {'contract': gmail_mail.CONTRACT, 'source': 'google', 'via': 'own-client', 'account': email, **result}
+
+
+    # ---------- Drive, Docs, Sheets and Contacts for the agent (wizard-connectors#27, switch google-workspace) ----------
+    def workspace_status(self):
+        """Accounts and which Google tools each has allowed. No content, no tokens."""
+        with self.lock:
+            blocked = self.gate()
+            return {'accounts': [{'email': a.get('email', ''), 'status': a['status'] if not blocked else 'reauth_required',
+                                  'services': [n for n, s in (('gmail', GMAIL_SCOPE), ('drive', DRIVE_SCOPE),
+                                                              ('contacts', CONTACTS_SCOPE)) if s in a['scopes']]}
+                                 for a in self.state['accounts'].values() if a.get('email')],
+                    'blocker': blocked}
+
+    def workspace_call(self, tool, args):
+        """Run one read-only Drive/Contacts tool for one account (the agent's, through this app's MCP)."""
+        import google_workspace
+        if tool not in google_workspace.TOOLS or not isinstance(args, dict): raise Denied('invalid_arguments')
+        scope = WORKSPACE_SCOPES[google_workspace.NEEDS[tool]]
+        with self.lock:
+            self._ready()
+            email = args.get('account')
+            have = [(aid, a) for aid, a in self.state['accounts'].items() if scope in a['scopes'] and a.get('email')]
+            if email in (None, ''):
+                if len(have) != 1: raise Denied('account_required' if have else 'not_connected')
+                aid, a = have[0]
+            else:
+                if not isinstance(email, str) or len(email) > 254: raise Denied('invalid_arguments')
+                found = [(i, x) for i, x in have if x['email'].lower() == email.strip().lower()]
+                if not found:
+                    known = any(x.get('email', '').lower() == email.strip().lower() for x in self.state['accounts'].values())
+                    raise Denied('permission_missing' if known else 'account_not_found')
+                aid, a = found[0]
+            if a['status'] != 'active': raise Denied('reauth_required')
+            try: a = self._refresh(aid)
+            except Denied as e:
+                self._invalidate(aid, e); raise
+            token, email = a['access_token'], a.get('email', '')
+        def call(url, query=None, raw=False):
+            return self.provider.workspace(url, token, query, raw)
+        rest = {k: v for k, v in args.items() if k != 'account'}
+        try: result = google_workspace.TOOLS[tool](call, rest)
+        except google_workspace.BadArgs as e: raise Denied('invalid_arguments:' + str(e)[:300]) from None
+        except Denied as e:
+            if str(e) == 'reauth_required':
+                with self.lock:
+                    if aid in self.state['accounts']: self._invalidate(aid, e)
+            raise
+        return {'source': 'google', 'via': 'connected-accounts', 'account': email, **result}
