@@ -61,6 +61,13 @@ WORKSPACE_MESSAGES = {
 AGENT_MAIL = {'google_mail_search': 'mail_search', 'google_mail_read': 'mail_get', 'google_mail_draft': 'mail_draft'}
 AGENT_WORKSPACE = {'google_drive_search': 'drive_search', 'google_drive_read': 'drive_read',
                    'google_contacts_search': 'contacts_search'}
+# The Google app (wizard-google#20) on this sign-in: /service/google/v1/<path> -> the same agent tools as this app's MCP.
+GOOGLE_APP_POST = {'drive_search': 'google_drive_search', 'drive_read': 'google_drive_read',
+                   'contacts_search': 'google_contacts_search', 'mail_search': 'google_mail_search',
+                   'mail_get': 'google_mail_read', 'mail_draft': 'google_mail_draft'}
+GOOGLE_APP_STATUS = {'invalid_arguments': 400, 'not_found': 404, 'rate_limited': 429, 'account_not_found': 404,
+                     'account_required': 400, 'too_large': 413, 'agent_access_denied': 403,
+                     'google_permission_missing': 403, 'service_off': 409}
 _ACCOUNT = {'account': {'type': 'string', 'description': 'Google account email; needed only when several have allowed it.'}}
 WORKSPACE_MCP_TOOLS = [
     {'name': 'google_accounts', 'description': 'Google accounts on Connected accounts and which tools each allowed '
@@ -234,6 +241,25 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(*mail_error(code, message or None))
         except OSError: return self.send(503, {'error': {'code': 'local_storage_unavailable', 'message': 'Connected accounts could not save that.'}})
 
+    def google_app_service(self, path, data=None):
+        """The Google app (wizard-google) as a consumer of this sign-in (wizard-google#20): its agent tools for Drive,
+        Docs, Sheets, Contacts and Gmail drafts at /service/google/v1/<tool> (box app network), with no second Google
+        sign-in. Needs the Google app's grant (an incoming row from wizard-google), this app's google-workspace switch,
+        and says which agent asks (X-Wizard-Agent): held to the owner's mail level, never sends, never a token."""
+        if not app_caller(self.headers, 'wizard-google'):
+            return self.send(403, {'error': {'code': 'google_grant_required', 'message': 'Only the Google app may use this.'}})
+        tool = path[len('/service/google/v1/'):]
+        agent = self.headers.get('X-Wizard-Agent')
+        if agent is None:
+            return self.send(400, {'error': {'code': 'caller_unknown', 'message': 'Say which agent this is for: X-Wizard-Agent.'}})
+        name = agent.strip().lower()
+        caller = 'agent:' + (name if re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,62}', name) else 'main')
+        if tool == 'status' and self.command == 'GET': value = self.agent_google('google_accounts', {}, caller)
+        elif tool in GOOGLE_APP_POST and self.command == 'POST': value = self.agent_google(GOOGLE_APP_POST[tool], data, caller)
+        else: return self.send(404, {'error': {'code': 'not_found', 'message': 'Not found.'}})
+        if 'error' in value: return self.send(GOOGLE_APP_STATUS.get(value['error']['code'], 409), value)
+        return self.send(200, value)
+
     def do_DELETE(self):
         if not self.trusted(): return
         if not self.human(): return self.send(401, {'error':'owner_auth_required'})
@@ -247,6 +273,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.calendar_service(path)
         if path.startswith('/service/mail/v1/'):
             return self.mail_service(path)
+        if path.startswith('/service/google/v1/'):
+            return self.google_app_service(path)
         if not self.trusted(callback=path in ('/api/google/callback','/privacy')): return
         if path == '/privacy':
             return self.send(200,(ROOT/'web/privacy.html').read_bytes(),'text/html; charset=utf-8')
@@ -297,7 +325,11 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         is_calendar = path.startswith('/service/calendar/')
         is_mail = path.startswith('/service/mail/v1/')
-        if is_mail:
+        is_google = path.startswith('/service/google/v1/')
+        if is_google:
+            if not app_caller(self.headers, 'wizard-google'):
+                return self.send(403, {'error': {'code': 'google_grant_required', 'message': 'Only the Google app may use this.'}})
+        elif is_mail:
             if not app_caller(self.headers, 'wizard-mail'):
                 return self.send(403, {'error': {'code': 'mail_grant_required', 'message': 'Only Mail may use this.'}})
         elif is_calendar:
@@ -310,7 +342,7 @@ class Handler(BaseHTTPRequestHandler):
         elif not self.trusted(): return
         try:
             size = int(self.headers.get("Content-Length", "0"))
-            if size < 1 or size > (MAX_MAIL_BODY if is_mail else 8192): raise ValueError()
+            if size < 1 or size > (MAX_MAIL_BODY if is_mail or is_google else 8192): raise ValueError()
             if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                 return self.send(415,{"error":"json_required"})
             data = json.loads(self.rfile.read(size))
@@ -319,6 +351,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {"error":"invalid_request"})
         if is_calendar: return self.calendar_service(path, data)
         if is_mail: return self.mail_service(path, data)
+        if is_google: return self.google_app_service(path, data)
         if path == '/api/google/setup/intake':
             if set(data) != {'client_id','client_secret'}: return self.send(400, {'error':'invalid_request'})
             try:
@@ -402,7 +435,7 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError,KeyError,TypeError):
             return self.send(400,{"error":"invalid_request"})
 
-    def agent_google(self, name, args):
+    def agent_google(self, name, args, caller='agent:main'):
         """The agent's Google tools on the Connected accounts sign-in (wizard-connectors#27, switch google-workspace).
         Drive and Contacts are read-only; mail keeps the owner's level for agents and never sends."""
         def fail(code, message=None):
@@ -415,7 +448,7 @@ class Handler(BaseHTTPRequestHandler):
                 return {**broker.call('workspace_status'), 'mail_access': mail_access.view()}
             if name in AGENT_MAIL:
                 tool = AGENT_MAIL[name]
-                mail_access.check('agent:main', tool)
+                mail_access.check(caller, tool)
                 return broker.call('mail_call', tool=tool, args=args)
             return broker.call('workspace_call', tool=AGENT_WORKSPACE[name], args=args)
         except mail_access.Refused as e: return fail(e.code, e.message)

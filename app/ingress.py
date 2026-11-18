@@ -15,7 +15,7 @@ class Ingress(BaseHTTPRequestHandler):
                 or any(k.lower().startswith(('x-forwarded-', 'tailscale-')) or k.lower() in ('forwarded','via','origin','cookie') for k in self.headers)):
                 self.send_error(403); return
             size=int(self.headers.get('Content-Length','0'))
-            mail=unquote(urlsplit(self.path).path).startswith('/service/mail/v1/')
+            mail=unquote(urlsplit(self.path).path).startswith(('/service/mail/v1/','/service/google/v1/'))  # drafts with files
             if not 0<=size<=(26*1024*1024 if mail else 8192) or not self.path.startswith('/') or self.path.startswith('//'):
                 self.send_error(400);return
             headers={k:v for k,v in self.headers.items() if k.lower() not in HOP}
