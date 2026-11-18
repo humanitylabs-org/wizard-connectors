@@ -15,14 +15,15 @@ class Ingress(BaseHTTPRequestHandler):
                 or any(k.lower().startswith(('x-forwarded-', 'tailscale-')) or k.lower() in ('forwarded','via','origin','cookie') for k in self.headers)):
                 self.send_error(403); return
             size=int(self.headers.get('Content-Length','0'))
-            if not 0<=size<=8192 or not self.path.startswith('/') or self.path.startswith('//'):
+            mail=unquote(urlsplit(self.path).path).startswith('/service/mail/v1/')
+            if not 0<=size<=(26*1024*1024 if mail else 8192) or not self.path.startswith('/') or self.path.startswith('//'):
                 self.send_error(400);return
             headers={k:v for k,v in self.headers.items() if k.lower() not in HOP}
             if intake: headers['Host']='wizard-connectors:8799'  # Only the checked internal alias reaches this lane.
             connection=http.client.HTTPConnection('wizard-connectors',8799,timeout=110)
             connection.request(self.command,self.path,body=self.rfile.read(size) if size else None,headers=headers)
-            response=connection.getresponse();body=response.read(2*1024*1024+1)
-            if len(body)>2*1024*1024:raise ValueError()
+            response=connection.getresponse();limit=(8 if mail else 2)*1024*1024;body=response.read(limit+1)
+            if len(body)>limit:raise ValueError()
             self.send_response(response.status)
             for k,v in response.getheaders():
                 if k.lower() not in HOP|{'content-length','server','date'}:self.send_header(k,v)

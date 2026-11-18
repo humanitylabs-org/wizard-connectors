@@ -20,8 +20,10 @@ class ServiceHandler(BaseHTTPRequestHandler):
         if self.path!='/rpc' or not hmac.compare_digest(token,self.server.token): return self.send(401,{'error':'service_auth_required'})
         try:
             size=int(self.headers.get('Content-Length','0'))
-            if not 0<size<=8192: raise ValueError()
+            # Only mail_call (a Mail draft with attachments) may be large.
+            if not 0<size<=self.server.max_body: raise ValueError()
             data=json.loads(self.rfile.read(size))
+            if size>8192 and data.get('operation')!='mail_call': raise ValueError()
             if set(data)!={'operation','args'} or not isinstance(data['args'],dict): raise ValueError()
             if data['operation'] not in self.server.operations: raise Denied('operation_denied')
             result=self.server.operations[data['operation']](**data['args'])
@@ -39,7 +41,8 @@ def service(role, broker=None):
                     'save_client':b.save_client,'clear_client':b.clear_client,'calendar_bind':b.calendar_bind,
                     'save_agreements':b.save_agreements,
                     'setup_status':b.setup_status,'setup_begin':b.setup_begin,'setup_deposit':b.setup_deposit,
-                    'calendar_status':b.calendar_status,'calendar_calendars':b.calendar_calendars,'calendar_events':b.calendar_events}
+                    'calendar_status':b.calendar_status,'calendar_calendars':b.calendar_calendars,'calendar_events':b.calendar_events,
+                    'mail_status':b.mail_status,'mail_call':b.mail_call}
         port,token=8800,os.environ.get('BROKER_TOKEN','')
     elif role=='media':
         # This role has no Google volume, broker token, or credential-bearing env.
@@ -63,6 +66,7 @@ def service(role, broker=None):
     if len(token)<32: raise RuntimeError('service_token_required')
     s=ThreadingHTTPServer((os.environ.get('BIND_HOST','127.0.0.1'),int(os.environ.get('PORT',port))),ServiceHandler)
     s.token=token; s.operations=operations
+    s.max_body=26*1024*1024 if role=='google' else 8192
     return s
 
 if __name__=='__main__': service(os.environ['SERVICE_ROLE']).serve_forever()

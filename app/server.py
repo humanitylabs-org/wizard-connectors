@@ -15,7 +15,8 @@ from jobs import Jobs
 from private_model import PrivateModel, Blocked
 from service_rpc import RPC, RemotePrivateModel
 from google_broker import Denied
-from grants import calendar_caller
+from grants import calendar_caller, app_caller
+import mail_access
 import re
 import sys
 
@@ -45,6 +46,30 @@ CALLBACK_REASONS = {
     'reauth_required': 'Google didn’t confirm this sign-in. Tap Connect again; if it happens twice, tell your wizard.',
     '_': 'Something went wrong while finishing the sign-in. Tap Connect again; if it happens twice, tell your wizard.',
 }
+
+MAIL_SWITCH = 'gmail-for-mail'
+MAIL_TOOLS = ('mail_search', 'mail_get', 'mail_update', 'mail_update_bulk', 'mail_draft', 'mail_send')
+MAX_MAIL_BODY = 26 * 1024 * 1024  # mail_draft carries up to 18 MB of files as base64
+MAIL_MESSAGES = {
+    'service_off': 'Gmail for Mail is off in Connected accounts.',
+    'not_connected': 'No Google account has Gmail turned on in Connected accounts.',
+    'account_required': 'Choose which Google account.',
+    'account_not_found': 'That Google account is not connected in Connected accounts.',
+    'permission_missing': 'This Google account has not given Gmail access yet. Open Connected accounts and allow Mail for it.',
+    'google_permission_missing': 'Google refused. Turn on the Gmail API in your Google Cloud project, then try again.',
+    'reauth_required': 'Sign in to this Google account again in Connected accounts.',
+    'not_found': 'Gmail could not find that message.',
+    'rate_limited': 'Gmail is busy. Try again in a minute.',
+    'google_configuration_required': 'Set up your Google app in Connected accounts first.',
+    'google_disabled': 'Google is turned off in Connected accounts.',
+}
+MAIL_STATUS = {'invalid_arguments': 400, 'not_found': 404, 'rate_limited': 429, 'account_not_found': 404,
+               'account_required': 400, 'service_off': 409, 'google_permission_missing': 403}
+
+
+def mail_error(code, message=None):
+    return MAIL_STATUS.get(code, 409), {'error': {'code': code, 'message': message or MAIL_MESSAGES.get(code, 'Gmail could not do that.')}}
+
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "ConnectedAccounts"
@@ -113,6 +138,37 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {'error':'invalid_operation'})
         except Denied as e: return self.send(409, {'error':str(e)})
 
+    def mail_service(self, path, data=None):
+        """Gmail for Mail: contract wizard.mail-calendar/1 mail tools at /service/mail/v1/<tool> (box app network)."""
+        if not app_caller(self.headers, 'wizard-mail'):
+            return self.send(403, {'error': {'code': 'mail_grant_required', 'message': 'Only Mail may use this.'}})
+        if not switch_on(MAIL_SWITCH): return self.send(*mail_error('service_off'))
+        agent = self.headers.get('X-Wizard-Agent')
+        if agent is not None:
+            name = agent.strip().lower()
+            caller = 'agent:' + (name if re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,62}', name) else 'main')
+        elif self.headers.get('X-Wizard-Owner') == '1': caller = 'owner'
+        else: return self.send(400, {'error': {'code': 'caller_unknown', 'message': 'Say who this is for: X-Wizard-Owner or X-Wizard-Agent.'}})
+        tool = path[len('/service/mail/v1/'):]
+        try:
+            if tool == 'status' and self.command == 'GET':
+                value = broker.call('mail_status')
+                return self.send(200, {'contract': 'wizard.mail-calendar/1', 'source': 'google', 'via': 'own-client',
+                                       'accounts': value['accounts'], 'mail_access': mail_access.view(),
+                                       'mail_calendar': {'tools': [t for t in MAIL_TOOLS if caller == 'owner' or t != 'mail_send']}})
+            if tool == 'agent_access' and self.command == 'POST':
+                if caller != 'owner': return self.send(403, {'error': {'code': 'owner_only', 'message': 'Only the owner changes agent access.'}})
+                if set(data) != {'mail'} or data['mail'] not in mail_access.LEVELS: return self.send(*mail_error('invalid_arguments', 'mail must be no_access, read_only or draft_only.'))
+                return self.send(200, {'agent_access': mail_access.set_level(data['mail'])})
+            if tool not in MAIL_TOOLS or self.command != 'POST': return self.send(404, {'error': {'code': 'not_found', 'message': 'Not found.'}})
+            mail_access.check(caller, tool)
+            return self.send(200, broker.call('mail_call', tool=tool, args=data))
+        except mail_access.Refused as e: return self.send(403, {'error': {'code': e.code, 'message': e.message}})
+        except Denied as e:
+            code, _, message = str(e).partition(':')
+            return self.send(*mail_error(code, message or None))
+        except OSError: return self.send(503, {'error': {'code': 'local_storage_unavailable', 'message': 'Connected accounts could not save that.'}})
+
     def do_DELETE(self):
         if not self.trusted(): return
         if not self.human(): return self.send(401, {'error':'owner_auth_required'})
@@ -124,6 +180,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path.startswith('/service/calendar/'):
             return self.calendar_service(path)
+        if path.startswith('/service/mail/v1/'):
+            return self.mail_service(path)
         if not self.trusted(callback=path in ('/api/google/callback','/privacy')): return
         if path == '/privacy':
             return self.send(200,(ROOT/'web/privacy.html').read_bytes(),'text/html; charset=utf-8')
@@ -157,7 +215,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {"google":{**google_status(), 'suggested_redirect_uri':self.callback_guess()}, "synthetic_only":True,
                     "private_route":{"model":"tinfoil/glm-5-3", "enabled":jobs.enabled, "configured":bool(model.key), "fallback":False, "tools":False},
                     "assurance":{"real_data_eligible":False,"host_admin_isolation":False,"network_confinement":os.environ.get('ISOLATED_PACKAGE') == 'true'},
-                    "threads":[{"id":k,"title":v["title"],"count":len(v["messages"])} for k,v in THREADS.items()]})
+                    "threads":[{"id":k,"title":v["title"],"count":len(v["messages"])} for k,v in THREADS.items()],
+                    "mail":{"on":switch_on(MAIL_SWITCH),"scope":"https://www.googleapis.com/auth/gmail.modify","agent_access":mail_access.view()}})
             if path.startswith("/api/conversations/"):
                 return self.send(200, snapshot(path.rsplit("/",1)[1]))
             if path.startswith("/api/results/"):
@@ -171,7 +230,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlsplit(self.path).path
         is_calendar = path.startswith('/service/calendar/')
-        if is_calendar:
+        is_mail = path.startswith('/service/mail/v1/')
+        if is_mail:
+            if not app_caller(self.headers, 'wizard-mail'):
+                return self.send(403, {'error': {'code': 'mail_grant_required', 'message': 'Only Mail may use this.'}})
+        elif is_calendar:
             if not calendar_caller(self.headers): return self.send(403, {'error':'calendar_grant_required'})
         elif path == '/api/google/setup/intake':
             # Direct internal service/loopback only; ingress rejects public/proxied requests.
@@ -181,7 +244,7 @@ class Handler(BaseHTTPRequestHandler):
         elif not self.trusted(): return
         try:
             size = int(self.headers.get("Content-Length", "0"))
-            if size < 1 or size > 8192: raise ValueError()
+            if size < 1 or size > (MAX_MAIL_BODY if is_mail else 8192): raise ValueError()
             if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                 return self.send(415,{"error":"json_required"})
             data = json.loads(self.rfile.read(size))
@@ -189,6 +252,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return self.send(400, {"error":"invalid_request"})
         if is_calendar: return self.calendar_service(path, data)
+        if is_mail: return self.mail_service(path, data)
         if path == '/api/google/setup/intake':
             if set(data) != {'client_id','client_secret'}: return self.send(400, {'error':'invalid_request'})
             try:
@@ -238,15 +302,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200,broker.call('save_agreements', **data))
             if path == '/api/google/client' and set(data) == {'client_id','client_secret','redirect_uri'}:
                 return self.send(200,broker.call('save_client',**data))
-            if path in ('/api/google/connect','/api/google/reconnect') and set(data) <= {'account','youtube','calendar'}:
-                if any(k in data and type(data[k]) is not bool for k in ('youtube','calendar')): raise ValueError()
+            if path == '/api/mail/access' and set(data) == {'level'}:
+                if not switch_on(MAIL_SWITCH): return self.send(409,{'error':'service_off'})
+                return self.send(200,mail_access.set_level(data['level']))
+            if path in ('/api/google/connect','/api/google/reconnect') and set(data) <= {'account','youtube','calendar','gmail'}:
+                if any(k in data and type(data[k]) is not bool for k in ('youtube','calendar','gmail')): raise ValueError()
+                if data.get('gmail') and not switch_on(MAIL_SWITCH): return self.send(409,{'error':'service_off'})
                 if data.get('account') is not None and not isinstance(data['account'],str): raise ValueError()
                 # Reuse this browser's binding so overlapping sign-in windows all stay valid;
                 # a fresh value per tap would orphan any window opened earlier.
                 jar=SimpleCookie();jar.load(self.headers.get('Cookie',''))
                 prior=jar.get('connectors_oauth')
                 browser=prior.value if prior and re.fullmatch(r'[A-Za-z0-9_-]{43}',prior.value) else secrets.token_urlsafe(32)
-                value=broker.call('start', browser=browser,account=data.get('account'),youtube=data.get('youtube',False),calendar=data.get('calendar',False))
+                value=broker.call('start', browser=browser,account=data.get('account'),youtube=data.get('youtube',False),calendar=data.get('calendar',False),gmail=data.get('gmail',False))
                 started=parse_qs(urlsplit(value['authorization_url']).query).get('state',[''])[0]
                 print(f'google_sign_in_started sign_in={hashlib.sha256(started.encode()).hexdigest()[:8]}',file=sys.stderr,flush=True)
                 secure='; Secure' if any(o.startswith('https:') for o in ORIGINS) else ''
@@ -317,7 +385,12 @@ import threading as _sw_threading
 from pathlib import Path as _SwPath
 from urllib.parse import urlsplit as _sw_urlsplit
 
-SWITCHES = []
+SWITCHES = [
+    {'id': 'gmail-for-mail', 'name': 'Gmail for Mail',
+     'description': 'Mail reads, searches and drafts Gmail through the Google account connected here: one Google app, '
+                    'one sign-in, no Composio. Agents keep the level you choose (Draft only by default); only you send.',
+     'default': False, 'issues': ['humanitylabs-org/wizard-connectors#15']},
+]
 _SW_CONTRACT = 'wizard.app-switches/1'
 _SW_ROUTE = _sw_re.compile(r'(?:/[a-z0-9][a-z0-9-]{0,62})?/api/switches/?')
 _SW_LOCAL = {'localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0'}
