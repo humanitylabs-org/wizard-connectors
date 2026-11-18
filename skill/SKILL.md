@@ -22,6 +22,10 @@ Use `connector_status` for content-free readiness and `summary_job_status` for a
 
 If automation cannot safely proceed, use **Set it up myself**. The manual flow links the same three agreements; the owner clicks Google's own checkboxes. Guide **one screen at a time**, giving the exact copy value only at its step (redirect URI at step 5). Never ask the owner to paste secrets into chat.
 
+## "Connect my Gmail to Mail"
+
+Make sure the Google app is set up and every API in `required_apis` is on (above: for a configured app, only `--step api`). Then tell the owner: “Open Mail, tap Connect your email → Google → Continue to Google, and tap Allow on Google's screen.” That Allow is their only step: Mail's tap turns Gmail for Mail on here by itself (wizard-connectors#21, `docs/MAIL_API.md`). You never start the Google sign-in yourself and never see the account. When Drive, Docs, Sheets or People connectors are added, their APIs go into `required_apis` and the setup script's `APIS` together (tests/test_google_api_step.py keeps the two equal), so the same `--step api` turns them on.
+
 ## Calendar consumer API
 
 Calendar uses `X-Wizard-Grant` at `http://wizard-connectors-calendar:8799/service/calendar/` (see `docs/CALENDAR_API.md`). MCP deliberately exposes no calendar lists or events. It cannot connect accounts or grant service permissions. Music binding remains separate.

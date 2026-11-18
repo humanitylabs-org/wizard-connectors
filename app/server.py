@@ -138,10 +138,36 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {'error':'invalid_operation'})
         except Denied as e: return self.send(409, {'error':str(e)})
 
+    def mail_connect(self, data):
+        """Connect Gmail from inside Mail (wizard-connectors#21; Mail's switch connect-gmail-in-mail sends it).
+
+        Only the owner's own tap in Mail (Mail's grant + X-Wizard-Owner: 1, never an agent): starts Google's sign-in
+        with the Gmail scope on the owner's own Google app and answers the Google URL for Mail to open, so Google's
+        Allow is the owner's only step. The tap is the owner asking for Gmail in Mail, so it also turns this app's
+        `gmail-for-mail` switch on (no switch for the owner to find); they can still turn it off. Nothing is turned on
+        when the Google app is not set up yet: that answers google_configuration_required, as before."""
+        if self.headers.get('X-Wizard-Agent') is not None or self.headers.get('X-Wizard-Owner') != '1':
+            return self.send(403, {'error': {'code': 'owner_only', 'message': 'Only you can connect Gmail, from Mail.'}})
+        if data != {}: return self.send(*mail_error('invalid_arguments', 'Send {}.'))
+        try:
+            value = broker.call('start', browser=secrets.token_urlsafe(32), account=None, youtube=False, calendar=False, gmail=True)
+            if not switch_on(MAIL_SWITCH): _sw_set(MAIL_SWITCH, True)
+        except Denied as e:
+            code, _, message = str(e).partition(':')
+            return self.send(*mail_error(code, message or None))
+        except OSError: return self.send(503, {'error': {'code': 'local_storage_unavailable', 'message': 'Connected accounts could not save that.'}})
+        started = parse_qs(urlsplit(value['authorization_url']).query).get('state', [''])[0]
+        print(f'google_sign_in_started from=mail sign_in={hashlib.sha256(started.encode()).hexdigest()[:8]}', file=sys.stderr, flush=True)
+        return self.send(200, {'authorization_url': value['authorization_url'], 'expires_in': value['expires_in'],
+                               'scope': 'https://www.googleapis.com/auth/gmail.modify'})
+
     def mail_service(self, path, data=None):
         """Gmail for Mail: contract wizard.mail-calendar/1 mail tools at /service/mail/v1/<tool> (box app network)."""
         if not app_caller(self.headers, 'wizard-mail'):
             return self.send(403, {'error': {'code': 'mail_grant_required', 'message': 'Only Mail may use this.'}})
+        tool = path[len('/service/mail/v1/'):]
+        if tool == 'connect' and self.command == 'POST':
+            return self.mail_connect(data)
         if not switch_on(MAIL_SWITCH): return self.send(*mail_error('service_off'))
         agent = self.headers.get('X-Wizard-Agent')
         if agent is not None:
@@ -149,7 +175,6 @@ class Handler(BaseHTTPRequestHandler):
             caller = 'agent:' + (name if re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,62}', name) else 'main')
         elif self.headers.get('X-Wizard-Owner') == '1': caller = 'owner'
         else: return self.send(400, {'error': {'code': 'caller_unknown', 'message': 'Say who this is for: X-Wizard-Owner or X-Wizard-Agent.'}})
-        tool = path[len('/service/mail/v1/'):]
         try:
             if tool == 'status' and self.command == 'GET':
                 value = broker.call('mail_status')

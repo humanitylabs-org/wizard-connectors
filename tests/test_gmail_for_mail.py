@@ -124,6 +124,39 @@ class GmailForMailTests(BrokerHTTPTests):
         self.assertEqual((code, body['error']['code']), (400, 'invalid_arguments'))
         self.assertIn('max', body['error']['message'])
 
+    def test_connect_from_mail_one_allow_turns_gmail_for_mail_on(self):
+        # wizard-connectors#21: the owner's tap in Mail starts Google's sign-in with the Gmail scope, no switch to find.
+        self.assertFalse(self.req('/api/state')[1]['mail']['on'])
+        code, out, _ = self.mail('connect', {})
+        self.assertEqual(code, 200, out)
+        from urllib.parse import parse_qs, urlsplit
+        self.assertTrue(out['authorization_url'].startswith('https://accounts.google.com/'))
+        params = {k: v[0] for k, v in parse_qs(urlsplit(out['authorization_url']).query).items()}
+        self.assertIn(GMAIL_SCOPE, params['scope'].split())
+        self.assertTrue(self.req('/api/state')[1]['mail']['on'])  # the tap turned Gmail for Mail on
+        self.fake.nonce = params['nonce']; self.fake.scopes = set(params['scope'].split())
+        self.cookie = ''  # finished in another window: the single-use state binds it, not a cookie
+        self.assertEqual(self.finish(params)[0], 200)  # Google's Allow: the owner's only step
+        status = self.mail('status')[1]
+        self.assertEqual(status['accounts'][0]['services'], ['gmail'])
+        self.assertEqual(self.mail('mail_search', {})[0], 200)
+
+    def test_connect_from_mail_is_the_owners_tap_only(self):
+        self.assertEqual(self.mail('connect', {}, grant={'X-Wizard-Grant': 'WRONG'})[0], 403)
+        calendar = self.grant(caller='wizard-calendar')
+        self.assertEqual(self.req('/service/mail/v1/connect', {}, owner=False, headers={**calendar, 'X-Wizard-Owner': '1'})[0], 403)
+        code, body, _ = self.mail('connect', {}, who={'X-Wizard-Agent': 'main'})
+        self.assertEqual((code, body['error']['code']), (403, 'owner_only'))
+        self.assertEqual(self.mail('connect', {}, who={'X-Wizard-Agent': 'main', 'X-Wizard-Owner': '1'})[0], 403)
+        self.assertEqual(self.mail('connect', {'account': 'x'})[0], 400)
+        self.assertFalse(self.req('/api/state')[1]['mail']['on'])  # none of these turned anything on
+
+    def test_connect_from_mail_without_a_google_app_turns_nothing_on(self):
+        del self.config['GOOGLE_CLIENT_SECRET']
+        code, body, _ = self.mail('connect', {})
+        self.assertEqual((code, body['error']['code']), (409, 'google_configuration_required'))
+        self.assertFalse(self.req('/api/state')[1]['mail']['on'])
+
     def test_transport_stays_on_gmail_users_me(self):
         t = GoogleTransport()
         for url in ('https://evil.invalid/gmail/v1/users/me/messages', GMAIL + '/../x', GMAIL + '/messages?x=1',
