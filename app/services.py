@@ -23,7 +23,8 @@ class ServiceHandler(BaseHTTPRequestHandler):
             # Only mail_call (a Mail draft with attachments) may be large.
             if not 0<size<=self.server.max_body: raise ValueError()
             data=json.loads(self.rfile.read(size))
-            if size>8192 and data.get('operation')!='mail_call': raise ValueError()
+            # calendar_http carries one event (up to 64 KB, checked again by the broker).
+            if size>8192 and data.get('operation')!='mail_call' and not (data.get('operation')=='calendar_http' and size<=80*1024): raise ValueError()
             if set(data)!={'operation','args'} or not isinstance(data['args'],dict): raise ValueError()
             if data['operation'] not in self.server.operations: raise Denied('operation_denied')
             result=self.server.operations[data['operation']](**data['args'])
@@ -43,7 +44,8 @@ def service(role, broker=None):
                     'setup_status':b.setup_status,'setup_begin':b.setup_begin,'setup_deposit':b.setup_deposit,
                     'calendar_status':b.calendar_status,'calendar_calendars':b.calendar_calendars,'calendar_events':b.calendar_events,
                     'mail_status':b.mail_status,'mail_call':b.mail_call,
-                    'workspace_status':b.workspace_status,'workspace_call':b.workspace_call}
+                    'workspace_status':b.workspace_status,'workspace_call':b.workspace_call,
+                    'calendar_edit_status':b.calendar_edit_status,'calendar_http':b.calendar_http}
         port,token=8800,os.environ.get('BROKER_TOKEN','')
     elif role=='media':
         # This role has no Google volume, broker token, or credential-bearing env.
