@@ -1,3 +1,7 @@
+# Connected accounts 0.3.0
+
+- **Gmail for Mail** (switch `gmail-for-mail`, off by default; wizard-connectors#15). Mail reads, searches and drafts Gmail through the Google account connected here: one Google app, one sign-in, no Composio. Each account gets a Mail row (Allow adds Gmail access) and an "Agents and your mail" level (Draft only by default; agents never send). Turn on the Gmail API in the same Google Cloud project. See [MAIL_API.md](MAIL_API.md).
+
 # Connected accounts 0.2.0 release notes
 
 Version **0.2.0** (previous listed release: 0.1.1).
