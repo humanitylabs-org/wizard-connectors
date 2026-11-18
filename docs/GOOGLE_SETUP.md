@@ -6,7 +6,7 @@ The owner uses their own **main Google account** to own **one** project + Web OA
 
 The Google panel separates **Your Google app — one time** from **Your Google accounts — add as many as you like**. Agent setup first shows three unchecked, labelled agreements with official document links and a country picker (language-region default when available). Agree and continue stays disabled until every box and country are selected. Only a successful owner-authenticated same-origin save opens the handoff; saving failures retain choices and never start setup. Shared Back returns through each prior screen; the manual entry links the same documents without recording delegated acceptance. Agent setup then shows exactly `Set up my Google app` and a Copy message button. The shared host's `nav.openThread` forbids `__new__`, admits only selected thread apps, and `openContextDraft` is Notifications-only: Connected accounts must not invent a send API or bypass those guards.
 
-Manual setup has seven screens: account/audience; project; Calendar API; Auth branding/audience/production; Web client + exact redirect URI Copy; validated credentials Save; connect accounts and grant/bind Calendar. Steps 1–5 require owner confirmation, step 6 requires an actual successful save, step 7 finishes into a compact configured row. Shared Back goes to the preceding step, then setup entry, then the app root. No URL navigation or exit sentinels. Unsaved credentials hold app updates and must be discarded explicitly on Back.
+Manual setup has seven screens: account/audience; project; Calendar, Gmail and YouTube Data APIs; Auth branding/audience/production; Web client + exact redirect URI Copy; validated credentials Save; connect accounts and grant/bind Calendar. Steps 1–5 require owner confirmation, step 6 requires an actual successful save, step 7 finishes into a compact configured row. Shared Back goes to the preceding step, then setup entry, then the app root. No URL navigation or exit sentinels. Unsaved credentials hold app updates and must be discarded explicitly on Back.
 
 ## Reuse inventory
 
@@ -60,4 +60,4 @@ Current Google documentation used for the page model:
 - https://developers.google.com/workspace/guides/configure-oauth-consent
 - https://developers.google.com/workspace/guides/create-credentials
 - https://developers.google.com/identity/protocols/oauth2/web-server
-- Console paths: `/auth/overview`, `/auth/branding`, `/auth/audience`, `/auth/clients`; Calendar API library `calendar-json.googleapis.com`.
+- Console paths: `/auth/overview`, `/auth/branding`, `/auth/audience`, `/auth/clients`; API library pages for every `required_apis` entry: `calendar-json.googleapis.com`, `gmail.googleapis.com`, `youtube.googleapis.com`. `--step api` alone turns on missing APIs in an already configured project (no intake, no project creation).

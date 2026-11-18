@@ -64,7 +64,7 @@ class FakeConsolePage:
         return FakeLocator(self, [x for x in self.items if x.role == role and (name is None or (name.search(x.name) if hasattr(name, 'search') else x.name == name))])
     def evaluate(self, expression, code): return {'GB': 'United Kingdom', 'US': 'United States'}[code]
 
-fixture={'project':None,'enabled':False,'branding':False,'production':False,'client':False,'creates':0}
+fixture={'project':None,'enabled':False,'apis':set(),'branding':False,'production':False,'client':False,'creates':0}
 REDIRECT='https://owner.example/connected-accounts/api/google/callback'
 SECRET='GOCSPX-FAKE_CONSOLE_FIXTURE_SECRET'
 ID='fake-console.apps.googleusercontent.com'
@@ -80,8 +80,9 @@ def handle(route):
     if p=='/_fixture/project':
         fixture['project']=q['projectid'][0]
         body='<p>Project creation complete</p>'
-    elif p=='/apis/api/calendar-json.googleapis.com':
-        fixture['enabled']=True;body=button('Manage','/apis/library/calendar-json.googleapis.com')
+    elif p.startswith('/apis/api/'):
+        name=p.rsplit('/',1)[1];fixture['apis'].add(name);fixture['enabled']=set(script.APIS)<=fixture['apis']
+        body=button('Manage','/apis/library/'+name)
     elif p=='/_fixture/branding':
         fixture['branding']=True;body='<h1>OAuth overview</h1>'+button('Create OAuth client','/auth/clients')
     elif p=='/_fixture/publish':
@@ -97,8 +98,9 @@ def handle(route):
         body+='</table>'
     elif p=='/projectcreate':
         body='<form action="/_fixture/project"><label>Project name<input name="name"></label><label>Project ID<input name="projectid"></label><button>Create</button></form>'
-    elif p=='/apis/library/calendar-json.googleapis.com':
-        body=button('Manage' if fixture['enabled'] else 'Enable','/apis/library/calendar-json.googleapis.com' if fixture['enabled'] else '/apis/api/calendar-json.googleapis.com')
+    elif p.startswith('/apis/library/'):
+        name=p.rsplit('/',1)[1];on=name in fixture['apis']
+        body=button('Manage' if on else 'Enable','/apis/library/'+name if on else '/apis/api/'+name)
     elif p=='/auth/overview':
         body=('<h1>OAuth overview</h1>'+button('Create OAuth client','/auth/clients')) if fixture['branding'] else button('Get started','/_fixture/brandingstart')
     elif p=='/_fixture/brandingstart':
@@ -165,6 +167,13 @@ def main():
                 with contextlib.redirect_stdout(output),contextlib.redirect_stderr(output):script.run(args,page)
                 assert json.loads(statefile.read_text())=={'project':pid}
                 assert fixture['creates']==1
+                assert set(script.APIS)<=fixture['apis']
+                # wizard-connectors#19: an app set up earlier for Calendar only. A fresh process
+                # with no state file and no intake capability turns on just the missing APIs.
+                fixture['apis']={'calendar-json.googleapis.com'};projects_before=fixture['project']
+                args=Namespace(agreements=AGREEMENTS,project=None,audience='External',state_file=Path(tmp)/'none.json',dry_run=False,intake_url=None,redirect_uri=None,step='api')
+                with contextlib.redirect_stdout(output),contextlib.redirect_stderr(output):script.run(args,page)
+                assert set(script.APIS)<=fixture['apis'] and fixture['project']==projects_before and fixture['creates']==1
                 # Parse selectors in real Playwright/Chromium, not FakeLocator.
                 # Every supported literal must override the initial US country,
                 # including slash-bearing labels. No secret page dumps.
@@ -197,7 +206,7 @@ def main():
                 try:rerun.gate();raise AssertionError('unknown terms bypassed')
                 except script.NeedsOwner:pass
                 assert SECRET not in output.getvalue() and ID not in output.getvalue()
-                print(json.dumps({'fixture':'FAKE Google Cloud console, native Chrome and real intake/RPC/store','result':'PASS','country_labels':country_checks,'country_refusals':4,'checks':['project create + existing reuse','Calendar API enable + readback','branding recorded user data policy','External audience publish + readback','Web client redirect and secret capture','direct deposit encrypted + status readback','idempotent existing client no duplicate','recorded Cloud terms and country','marketing left unticked','unrecorded and unknown terms fail closed','no credential stdout/stderr']}))
+                print(json.dumps({'fixture':'FAKE Google Cloud console, native Chrome and real intake/RPC/store','result':'PASS','country_labels':country_checks,'country_refusals':4,'checks':['project create + existing reuse','Calendar, Gmail and YouTube API enable + readback','API-only step for a Calendar-only project','branding recorded user data policy','External audience publish + readback','Web client redirect and secret capture','direct deposit encrypted + status readback','idempotent existing client no duplicate','recorded Cloud terms and country','marketing left unticked','unrecorded and unknown terms fail closed','no credential stdout/stderr']}))
             finally:browser.close()
     finally:t.tearDown()
 

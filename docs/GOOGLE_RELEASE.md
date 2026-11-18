@@ -5,7 +5,7 @@ shared managed Google client, cookie import or CLI credential reuse is needed.
 In Connected accounts → Google accounts → **Your Google app**:
 
 1. Create a Google Cloud project.
-2. Enable **Google Calendar API** (and **YouTube Data API v3** for Music catalog).
+2. Enable **Google Calendar API**, **Gmail API** (for Mail) and **YouTube Data API v3** (for Music catalog).
 3. Configure the OAuth consent screen as **External**. Add yourself as a test
    user, then Publish app to **In production** so refresh tokens do not expire
    after 7 days. An unverified-app warning is expected for personal use.

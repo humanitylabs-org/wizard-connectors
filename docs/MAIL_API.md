@@ -8,7 +8,8 @@ second Google app. One Google app (the owner's own, set up here), one sign-in pe
 - Turn the switch on (Tracker Try it: `connected-accounts:gmail-for-mail`). Each Google account card gets a **Mail**
   row: **Allow** opens Google's sign-in once more and adds Gmail access (`https://www.googleapis.com/auth/gmail.modify`:
   read, search, labels, drafts; Mail sends a draft only on the owner's tap).
-- In the owner's Google Cloud project, turn on the **Gmail API** (`gmail.googleapis.com`) next to the Calendar API.
+- The **Gmail API** (`gmail.googleapis.com`) is in `required_apis`: the agent setup turns it on with the Calendar API, and
+  for a project set up earlier for Calendar only the agent runs the setup script's `--step api` (wizard-connectors#19).
   Without it Gmail answers 403 and Mail says so (`google_permission_missing`); the account stays signed in.
 - **Agents and your mail**: No access, Read-only, Draft only (the default), the same levels as the Google and
   Microsoft apps. Agents never send.
