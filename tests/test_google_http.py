@@ -296,7 +296,7 @@ class BrokerHTTPTests(unittest.TestCase):
         aid=self.connect(True);self.b.bind(aid,True)
         self.assertEqual(self.req('/api/calendar/bind',{'account':aid,'consent':True})[1]['error'],'incremental_consent_required')
         self.calendar_connect(account=aid)
-        self.assertEqual(set(self.b.state['accounts'][aid]['scopes']),SCOPES)
+        self.assertEqual(set(self.b.state['accounts'][aid]['scopes']),IDENTITY|{YOUTUBE,CALENDAR})
         self.assertEqual(self.b.status()['bindings'][0]['account'],aid)
         self.assertEqual(self.req('/api/calendar/bind',{'account':aid,'consent':True})[0],200)
         other=self.calendar_connect('fixture-subject-b')

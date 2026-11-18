@@ -12,6 +12,11 @@ from pathlib import Path
 
 
 def calendar_caller(headers):
+    return app_caller(headers, 'wizard-calendar')
+
+
+def app_caller(headers, app_id):
+    """True when X-Wizard-Grant matches an incoming row from app_id (Calendar, or Mail for Gmail)."""
     path = os.environ.get('WIZARD_GRANTS_FILE') or '/wizard/grants.json'
     try:
         raw = Path(path).read_bytes()
@@ -25,9 +30,9 @@ def calendar_caller(headers):
         key = headers.get('X-Wizard-Grant', '')
         if not key or len(key) > 4096: return False
         digest = hashlib.sha256(key.encode()).hexdigest()
-        allowed = any(row['from']=='wizard-calendar' and hmac.compare_digest(digest, row['sha256']) for row in grants['incoming'])
+        allowed = any(row['from']==app_id and hmac.compare_digest(digest, row['sha256']) for row in grants['incoming'])
         if not allowed and not grants['enforce']:
-            logging.getLogger('calendar-grants').warning('Calendar grant denied despite report-only mode (private calendar data)')
+            logging.getLogger('app-grants').warning('%s grant denied despite report-only mode (private data)', app_id)
         return allowed
     except (OSError, ValueError, TypeError):
         return False

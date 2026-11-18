@@ -24,7 +24,12 @@ import google_agreements as agreements
 IDENTITY = frozenset({'openid', 'email'})
 YOUTUBE = 'https://www.googleapis.com/auth/youtube.readonly'
 CALENDAR = 'https://www.googleapis.com/auth/calendar.readonly'
-SCOPES = IDENTITY | {YOUTUBE, CALENDAR}
+# Gmail for Mail (wizard-connectors#15, switch `gmail-for-mail`): read, search, label changes and drafts. Sending
+# stays the owner's tap in Mail; agents never send (mail_access.py).
+GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
+SCOPES = IDENTITY | {YOUTUBE, CALENDAR, GMAIL_SCOPE}
+GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me/'
+MAX_GMAIL_BYTES = 40 * 1024 * 1024  # a draft's attachments come back base64 (18 MB of files)
 MAX_PAGES = 3
 # Owners work asynchronously: a sign-in link stays usable for a day, not minutes.
 SIGN_IN_WINDOW = 86400
@@ -68,6 +73,28 @@ class GoogleTransport:
             if e.code == 403 and operation in ('calendars','events'): raise Denied('provider_permission_denied') from None
             if e.code == 403: raise Denied('provider_permission_denied') from None
             raise Denied('provider_unavailable') from None
+        except Denied: raise
+        except Exception: raise Denied('provider_unavailable') from None
+
+    def gmail(self, method, url, token, query=None, body=None):
+        """One Gmail API call on the fixed Gmail host for the signed-in account (`users/me` only)."""
+        if method not in ('GET', 'POST', 'PUT') or not isinstance(url, str) or not url.startswith(GMAIL_API) \
+                or '..' in url or any(c in url for c in '?#\\') or any(ord(c) < 33 for c in url):
+            raise Denied('invalid_arguments')
+        if query: url += '?' + urlencode(query)
+        headers = {'Accept': 'application/json', 'Authorization': 'Bearer ' + token}
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode(); headers['Content-Type'] = 'application/json'
+        try:
+            with build_opener(ProxyHandler({}), NoRedirect()).open(Request(url, data=data, headers=headers, method=method), timeout=60) as r:
+                raw = r.read(MAX_GMAIL_BYTES + 1)
+                if len(raw) > MAX_GMAIL_BYTES: raise Denied('provider_response_too_large')
+                return json.loads(raw) if raw else {}
+        except HTTPError as e:
+            code = {401: 'reauth_required', 403: 'google_permission_missing', 404: 'not_found',
+                    400: 'invalid_arguments', 429: 'rate_limited'}.get(e.code, 'provider_unavailable')
+            raise Denied(code) from None
         except Denied: raise
         except Exception: raise Denied('provider_unavailable') from None
 
@@ -221,7 +248,9 @@ class Broker:
             return {'configured': c['client_configured'], 'managed': c['client_source'] == 'env',
                     'redirect_uri': c['redirect_uri'] or redirect_uri,
                     'required_apis': ['calendar-json.googleapis.com'],
-                    'required_scopes': sorted(IDENTITY | {CALENDAR}), 'agreements': self.agreement_status()}
+                    'required_scopes': sorted(IDENTITY | {CALENDAR}), 'agreements': self.agreement_status(),
+                    # Only for Mail (switch gmail-for-mail): enable the Gmail API in the same project.
+                    'optional_apis': ['gmail.googleapis.com'], 'optional_scopes': [GMAIL_SCOPE]}
 
     def setup_begin(self, redirect_uri):
         validate_redirect(redirect_uri)
@@ -294,14 +323,14 @@ class Broker:
                     'music': {'state': 'bound' if binding else 'unbound', 'provider': 'youtube-music',
                               'catalog': 'youtube-data-api', 'playback': 'separate_existing_app',
                               'playback_entitlement': False}}
-    def start(self, browser, account=None, youtube=False, calendar=False):
+    def start(self, browser, account=None, youtube=False, calendar=False, gmail=False):
         with self.lock:
             self._ready()
             if account and account not in self.state['accounts']: raise Denied('account_not_found')
             self.pending = {k:v for k,v in self.pending.items() if v['expires'] > time.time()}
             if len(self.pending) >= 32: raise Denied('authorization_busy')
             state, verifier, nonce = (secrets.token_urlsafe(32) for _ in range(3))
-            scopes = IDENTITY | ({YOUTUBE} if youtube else set()) | ({CALENDAR} if calendar else set())
+            scopes = IDENTITY | ({YOUTUBE} if youtube else set()) | ({CALENDAR} if calendar else set()) | ({GMAIL_SCOPE} if gmail is True else set())
             if account: scopes |= set(self.state['accounts'][account]['scopes'])
             self.pending[state] = {'browser': hashlib.sha256(browser.encode()).hexdigest(), 'verifier': verifier,
                                    'nonce': nonce, 'expires': time.time()+SIGN_IN_WINDOW, 'account': account, 'scopes': sorted(scopes)}
@@ -551,3 +580,50 @@ class Broker:
             binding=self.state['binding']
             if not binding: raise Denied('capability_denied')
             return self.catalog(binding['account'],video_id)
+
+    # ---------- Gmail for Mail (contract wizard.mail-calendar/1, mail tools; wizard-connectors#15) ----------
+    def mail_status(self):
+        """Accounts for Mail. An account offers mail once the owner gave this Google app Gmail access for it."""
+        with self.lock:
+            blocked = self.gate()
+            return {'accounts': [{'email': a.get('email', ''), 'status': a['status'] if not blocked else 'reauth_required',
+                                  'services': ['gmail'] if GMAIL_SCOPE in a['scopes'] else [], 'via': 'own-client'}
+                                 for a in self.state['accounts'].values() if a.get('email')],
+                    'blocker': blocked}
+
+    def _mail_account(self, email):
+        mail = [(aid, a) for aid, a in self.state['accounts'].items() if GMAIL_SCOPE in a['scopes'] and a.get('email')]
+        if email in (None, ''):
+            if len(mail) != 1: raise Denied('account_required' if mail else 'not_connected')
+            return mail[0]
+        if not isinstance(email, str) or len(email) > 254: raise Denied('invalid_arguments')
+        found = [(aid, a) for aid, a in mail if a['email'].lower() == email.strip().lower()]
+        if not found:
+            known = any(a.get('email', '').lower() == email.strip().lower() for a in self.state['accounts'].values())
+            raise Denied('permission_missing' if known else 'account_not_found')
+        return found[0]
+
+    def mail_call(self, tool, args):
+        """Run one mail tool for one account. Access levels are checked by the caller (server, mail_access.py)."""
+        import gmail_mail
+        if tool not in gmail_mail.TOOLS or not isinstance(args, dict): raise Denied('invalid_arguments')
+        with self.lock:
+            self._ready()
+            aid, a = self._mail_account(args.get('account'))
+            if a['status'] != 'active': raise Denied('reauth_required')
+            try: a = self._refresh(aid)
+            except Denied as e:
+                self._invalidate(aid, e); raise
+            token, email = a['access_token'], a.get('email', '')
+        # Provider I/O outside the lock: a page of mail is up to 25 calls. A disconnect meanwhile revokes the token.
+        def call(method, url, query=None, body=None):
+            return self.provider.gmail(method, url, token, query, body)
+        rest = {k: v for k, v in args.items() if k != 'account'}
+        try: result = gmail_mail.TOOLS[tool](call, rest)
+        except gmail_mail.BadArgs as e: raise Denied('invalid_arguments:' + str(e)[:300]) from None
+        except Denied as e:
+            if str(e) == 'reauth_required':
+                with self.lock:
+                    if aid in self.state['accounts']: self._invalidate(aid, e)
+            raise
+        return {'contract': gmail_mail.CONTRACT, 'source': 'google', 'via': 'own-client', 'account': email, **result}

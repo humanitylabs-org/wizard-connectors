@@ -12,12 +12,14 @@ class RPC:
         self.token = token
     def call(self, operation, **args):
         if not self.token: raise Denied('service_not_configured')
+        # The broker answers Gmail for Mail too; a draft with attachments is sent once, so allow its size.
         request = Request(self.url, data=json.dumps({'operation':operation,'args':args}).encode(),
                           headers={'Content-Type':'application/json', 'Authorization':'Bearer '+self.token})
         try:
             with build_opener(ProxyHandler({}), NoRedirect()).open(request, timeout=100) as response:
-                raw = response.read(2*1024*1024+1)
-                if len(raw)>2*1024*1024: raise Denied('service_response_too_large')
+                limit = (8 if operation == 'mail_call' else 2)*1024*1024
+                raw = response.read(limit+1)
+                if len(raw)>limit: raise Denied('service_response_too_large')
                 result = json.loads(raw)
         except HTTPError as e:
             with e:

@@ -4,6 +4,10 @@ Google setup now offers **Let your wizard set this up** or a seven-screen **Set 
 
 Google account readiness and a real no-tool Tinfoil `glm-5-3` summary of fictional chat. Real YouTube Music remains the selected provider in the existing Music app; this preview does not replace or modify playback.
 
+## Gmail for Mail (off by default)
+
+Switch `gmail-for-mail` (Tracker: `connected-accounts:gmail-for-mail`) lets Mail read, search and draft Gmail through the Google account connected here: no Composio, no second Google app. See [docs/MAIL_API.md](docs/MAIL_API.md).
+
 ## Boundaries
 
 - The real Google authorization-code/PKCE broker is implemented with owner-supplied Google app configuration and read-only Calendar bindings. No real account has been imported or authorized during this build. Signed fake-provider tests exercise actual handlers, refresh, revocation and encrypted storage. See [Google setup](docs/GOOGLE_RELEASE.md) and [Calendar service API](docs/CALENDAR_API.md).
