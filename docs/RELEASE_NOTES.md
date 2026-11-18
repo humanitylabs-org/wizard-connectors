@@ -1,3 +1,7 @@
+# Connected accounts 0.5.0
+
+- **Google tools for your wizard** (wizard-connectors#27; switch `google-workspace`, off by default). The agent lists Drive files, reads Docs, Sheets and Slides, looks up contacts and writes Gmail drafts through the Google account connected here, with no second Google sign-in. Each account gets a **Drive and Contacts** row: Allow adds read-only Drive and Contacts access. Mail drafts keep the owner's level for agents; agents never send. The agent setup also turns on the Drive and People APIs. See [GOOGLE_TOOLS.md](GOOGLE_TOOLS.md).
+
 # Connected accounts 0.4.0
 
 - **Connect Gmail from inside Mail** (wizard-connectors#21; Mail's switch `connect-gmail-in-mail`, off by default). Mail's Continue to Google asks Connected accounts (`POST /service/mail/v1/connect`, the owner's own tap only, never an agent) to start Google's sign-in with the Gmail scope; Google's Allow is the owner's only step, and the tap turns Gmail for Mail on here by itself. The skill tells the agent what to do for "connect my Gmail to Mail". See [MAIL_API.md](MAIL_API.md).
