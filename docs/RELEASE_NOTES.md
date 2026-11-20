@@ -1,3 +1,7 @@
+# Connected accounts 0.8.4
+
+- **Microsoft's agent level on Agent access** (humanitylabs-org/wizard-microsoft#10; needs this app's switch `grants-panel` and the Microsoft app's switch `agent-access-panel` (Microsoft 0.4.1), both off by default). The Microsoft card now lists the Microsoft accounts connected in the Microsoft app (names only) and Microsoft's agent level for mail and for calendar (one level for every agent), read from and set in the Microsoft app, which stays the only place it is kept and enforced. With Microsoft's switch off it says "set in Microsoft for now" as before.
+
 # Connected accounts 0.8.3
 
 - **Google's agent level on Agent access** (humanitylabs-org/wizard-google#30; needs this app's switch `grants-panel` and the Google app's switch `agent-access-panel` (Google 0.5.1), both off by default). The Google card now lists the Google accounts signed in to the Google app (names only) and Google's level for mail and for calendar, which applies to every agent. A change goes straight to the Google app, which still keeps and enforces it; a change in Mail or Calendar > Settings > Agent access shows here. With Google's switch off or an older Google app, the card says "set in Google for now" as before. See [CONNECTIONS_PANEL.md](CONNECTIONS_PANEL.md).
