@@ -116,6 +116,67 @@ async function fake(url, init) {
 """
 
 
+LEVEL_CHECK = r"""
+const C = require(process.argv[1]);
+const calls = [];
+let google = {mail: 'draft_only', calendar: 'suggest_only'};
+const levels = ids => ids.map(id => ({id, label: id}));
+const doc = () => ({app: 'wizard-google', accounts: [{name: 'me@example.com'}, {name: 'work@example.com'}], applies_to: 'every_agent',
+  agent_access: {mail: google.mail, what: 'w', levels: levels(['no_access', 'read_only', 'draft_only']),
+                 calendar: google.calendar, calendar_what: 'c', calendar_levels: levels(['no_access', 'read_only', 'suggest_only', 'can_edit'])}});
+const reply = (status, body) => ({status, ok: status >= 200 && status < 300, json: async () => body});
+async function fake(url, init) {
+  calls.push([init.method, url, init.headers['X-Wizard-Agent-Access'] || '', init.body || '']);
+  if (url.startsWith('/wizard/v1/apps/')) {
+    const id = decodeURIComponent(url.split('/')[4]);
+    if (id !== 'wizard-google') return reply(404, {error: 'app_not_found'});
+    return reply(200, {agents: [{id: 'hermes', label: 'Hermes', enabled: true}]});
+  }
+  if (url !== '/wizard-google/api/panel/agent-access' || init.credentials !== 'same-origin') return reply(404, {});
+  if (init.headers['X-Wizard-Agent-Access'] !== '1') return reply(403, {error: {code: 'owner_only'}});
+  if (init.method === 'POST') {
+    const b = JSON.parse(init.body);
+    if (b.mail === 'send') return reply(400, {error: {code: 'invalid_level'}});
+    google = {...google, ...b};
+  }
+  return reply(200, doc());
+}
+(async () => {
+  const out = {};
+  const view = await C.load(fake);
+  const g = view.apps.find(a => a.id === 'wizard-google');
+  out.google = [g.state, g.appLevelView.accounts, g.appLevelView.kinds.map(k => k.kind + ':' + k.level)];
+  out.set = (await C.setAppLevel(fake, g, 'calendar', 'can_edit')).kinds.map(k => k.kind + ':' + k.level);
+  out.kept = google;
+  try { await C.setAppLevel(fake, g, 'mail', 'send'); out.bad = 'no'; } catch (e) { out.bad = e.message; }
+  out.posts = calls.filter(c => c[0] === 'POST').map(c => [c[1], c[2], c[3]]);
+  // Google's switch off (404), an older Google, or the browser boundary: no level, the note stays "set in Google".
+  const off = await C.load(async (url, init) => url.startsWith('/wizard/v1/') ? fake(url, init) : reply(404, {error: {code: 'not_found'}}));
+  out.off = off.apps.filter(a => a.id === 'wizard-google').map(a => [a.state, a.appLevelView]);
+  // Agent Service out of reach but Google answers: Google's accounts and level are still shown.
+  const down = await C.load(async (url, init) => { if (url.startsWith('/wizard/v1/')) throw new TypeError('x'); return fake(url, init); });
+  out.down = [down.reachable, down.apps.map(a => a.id + ':' + a.state + ':' + !!a.appLevelView)];
+  console.log(JSON.stringify(out));
+})();
+"""
+
+
+@unittest.skipUnless(shutil.which('node'), 'node not installed')
+class GoogleLevelScriptTests(unittest.TestCase):
+    def test_reads_and_sets_googles_own_level_in_google(self):
+        # wizard-google#30: Google's accounts (names only) and its agent level, read from and set in the Google app.
+        run = subprocess.run(['node', '-e', LEVEL_CHECK, str(ROOT / 'web/connections.js')], capture_output=True, text=True, timeout=30)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        out = json.loads(run.stdout)
+        self.assertEqual(out['google'], ['ok', ['me@example.com', 'work@example.com'], ['mail:draft_only', 'calendar:suggest_only']])
+        self.assertEqual(out['set'], ['mail:draft_only', 'calendar:can_edit'])
+        self.assertEqual(out['kept'], {'mail': 'draft_only', 'calendar': 'can_edit'})
+        self.assertEqual(out['bad'], 'invalid_level')
+        self.assertEqual(out['posts'][0], ['/wizard-google/api/panel/agent-access', '1', '{"calendar":"can_edit"}'])
+        self.assertEqual(out['off'], [['ok', None]])
+        self.assertEqual(out['down'], [False, ['connected-accounts:unavailable:false', 'wizard-google:unavailable:true']])
+
+
 @unittest.skipUnless(shutil.which('node'), 'node not installed')
 class ConnectionsScriptTests(unittest.TestCase):
     def test_reads_and_sets_the_agent_service_ticks(self):
@@ -165,7 +226,7 @@ class ConnectionsScriptTests(unittest.TestCase):
 def load_tests(loader, tests, pattern):
     # Only this file's own tests: the BrokerHTTPTests base would otherwise run every one of its tests again here.
     suite = unittest.TestSuite()
-    for case in (ConnectionsPanelTests, ConnectionsScriptTests):
+    for case in (ConnectionsPanelTests, ConnectionsScriptTests, GoogleLevelScriptTests):
         for name in loader.getTestCaseNames(case):
             if name in case.__dict__:
                 suite.addTest(case(name))
