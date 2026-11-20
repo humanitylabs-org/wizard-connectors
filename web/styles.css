@@ -83,3 +83,10 @@ a { color:var(--wz-accent,var(--accent)); }
 @media(max-width:700px) { .wz-app { padding:20px 18px 28px; } .google-setup-actions { align-items:stretch; flex-direction:column; } .google-connect .actions { align-items:flex-start; flex-direction:column; } .google-account { padding:18px; } .google-account-head h3 { flex-basis:100%; } .callback-page { padding:32px 28px 20dvh; } }
 html[data-skin="signal"] button, html[data-skin="signal"] .google-continue, html[data-skin="signal"] input, html[data-skin="signal"] textarea, html[data-skin="signal"] dialog { border-radius:var(--wz-radius,var(--r)); }
 html[data-skin="signal"] summary, html[data-skin="signal"] .google-progress { font-family:ui-monospace,monospace; }
+/* Agent access (switch grants-panel, wizard-connectors#49). */
+#grants-row { margin-top:12px; }
+.grants-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:10px 0; border-top:1px solid var(--wz-border,var(--line-2)); }
+.grants-row > small { flex-basis:100%; }
+.grants-levels { display:flex; flex-wrap:wrap; gap:6px; }
+.grants-level { min-height:40px; padding:8px 12px; }
+.grants-audit { margin:4px 0; font-size:13px; overflow-wrap:anywhere; }
