@@ -1,3 +1,7 @@
+# Connected accounts 0.8.2
+
+- **Messenger's agent level on Agent access** (humanitylabs-org/wizard-messenger#342; needs this app's switch `grants-panel` and Messenger's switch `connected-accounts-levels`, both off by default). The Messenger card now lists Messenger's connected chat accounts (names only) and one level picker per agent (No access, Read-only, Draft-only). It reads and sets the level through Messenger's own route, so Messenger stays the only place it is kept and enforced; with Messenger's switch off it says "set in Messenger for now" as before.
+
 # Connected accounts 0.8.1
 
 - **Agent access in one place, reworked** (wizard-connectors#49; switch `grants-panel`, off by default). Following Miguel's rescope, the grants store from 0.8.0 is gone: no `wizard.app-grants/1`, no `/service/grants/v1/*` or `/api/grants*` routes, no audit log. Connected accounts > Agent access is now one screen over the existing owners: each installed account app with a switch per agent for "may use this app" (the agent.json ticks, read and set through the Agent Service's `GET/PUT /wizard/v1/apps/<app>/agents`), and Mail's level from this app. Other apps' own levels stay in those apps for now. See [CONNECTIONS_PANEL.md](CONNECTIONS_PANEL.md).
