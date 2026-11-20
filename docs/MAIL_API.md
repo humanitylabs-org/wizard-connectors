@@ -18,7 +18,7 @@ second Google app. One Google app (the owner's own, set up here), one sign-in pe
 
 Base: `provider_endpoints["connected-accounts"]` (the `wizard-connectors-calendar` ingress, port 8799) on the
 Mail → Connected accounts link network. Paths: `GET /service/mail/v1/status`, `POST /service/mail/v1/<tool>` for
-`mail_search`, `mail_get`, `mail_update`, `mail_update_bulk`, `mail_draft`, `mail_send`, and
+`mail_search`, `mail_get`, `mail_attachment`, `mail_update`, `mail_update_bulk`, `mail_draft`, `mail_send`, and
 `POST /service/mail/v1/agent_access {mail}` (owner only). Shapes are the contract's (wizard-google
 `docs/mail-calendar-contract.md`); every answer carries `contract`, `source: google`, `via: own-client`, `account`.
 
@@ -26,6 +26,11 @@ Mail → Connected accounts link network. Paths: `GET /service/mail/v1/status`, 
   report-only mode, because this is private mail.
 - Every request says who it is for: `X-Wizard-Owner: 1` (the owner's own tap in Mail) or `X-Wizard-Agent: <name>`
   (an agent through Mail's MCP, held to the owner's level; `mail_send` is refused as `agent_send_refused`).
+- Attachments (contract 1.6, wizard-mail#32): `mail_get` lists each file's `part` (Gmail `partId`), `content_id` and
+  `inline`, plus `inline_parts[]` (nameless pictures the HTML shows as `cid:`). `mail_attachment {id, part}` answers
+  `attachment {name, mime, size, base64}` so Mail can show a photo or save a file: at most 25 MB (413
+  `attachment_too_big`), unknown part 404 `not_found`, and owner only (an agent gets 403 `owner_only`; it is not in an
+  agent's tool list).
 - Switch off: every call answers 409 `service_off`, except `connect` below.
 - `POST /service/mail/v1/connect {}` (wizard-connectors#21; Mail sends it behind its switch `connect-gmail-in-mail`):
   the owner's own tap only (`X-Wizard-Owner: 1`; an agent gets 403 `owner_only`). Starts Google's sign-in on the
@@ -38,4 +43,4 @@ Mail → Connected accounts link network. Paths: `GET /service/mail/v1/status`, 
   `account_not_found`, `permission_missing`, `google_permission_missing`, `reauth_required`, `invalid_arguments`,
   `not_found`, `rate_limited`, `provider_unavailable`).
 - Tokens never leave the broker; Gmail is called only on `https://gmail.googleapis.com/gmail/v1/users/me/…`.
-  Request bodies up to 26 MB on this path (a draft with 18 MB of files), answers up to 8 MB.
+  Request bodies up to 26 MB on this path (a draft with 18 MB of files), answers up to 36 MB (one 25 MB attachment as base64).

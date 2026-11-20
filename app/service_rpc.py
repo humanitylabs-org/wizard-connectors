@@ -17,7 +17,7 @@ class RPC:
                           headers={'Content-Type':'application/json', 'Authorization':'Bearer '+self.token})
         try:
             with build_opener(ProxyHandler({}), NoRedirect()).open(request, timeout=100) as response:
-                limit = (8 if operation == 'mail_call' else 2)*1024*1024
+                limit = (36 if operation == 'mail_call' else 2)*1024*1024  # mail_attachment: 25 MB as base64
                 raw = response.read(limit+1)
                 if len(raw)>limit: raise Denied('service_response_too_large')
                 result = json.loads(raw)

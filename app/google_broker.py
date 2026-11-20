@@ -706,6 +706,7 @@ class Broker:
         rest = {k: v for k, v in args.items() if k != 'account'}
         try: result = gmail_mail.TOOLS[tool](call, rest)
         except gmail_mail.BadArgs as e: raise Denied('invalid_arguments:' + str(e)[:300]) from None
+        except gmail_mail.MailFault as e: raise Denied(e.code + ':' + e.message[:300]) from None
         except Denied as e:
             if str(e) == 'reauth_required':
                 with self.lock:

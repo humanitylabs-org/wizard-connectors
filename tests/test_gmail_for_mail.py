@@ -27,6 +27,20 @@ class FakeGmail(FakeGoogle):
             return {'id': 'm1', 'threadId': 't1', 'labelIds': ['INBOX', 'UNREAD'], 'snippet': 'FAKE hello',
                     'payload': {'headers': [{'name': 'From', 'value': 'Fake <fake@example.invalid>'},
                                             {'name': 'Subject', 'value': 'FAKE subject'}]}}
+        if url == GMAIL + '/messages/m3' and method == 'GET':  # an iPhone photo email (wizard-mail#32)
+            return {'id': 'm3', 'threadId': 't3', 'labelIds': ['INBOX'], 'snippet': '',
+                    'payload': {'mimeType': 'multipart/mixed', 'partId': '', 'headers': [{'name': 'Subject', 'value': 'Photo'}], 'parts': [
+                        {'partId': '0', 'mimeType': 'text/html', 'filename': '', 'headers': [],
+                         'body': {'size': 40, 'data': 'PGRpdj48aW1nIHNyYz0iY2lkOnBob3RvMSI-PC9kaXY-'}},
+                        {'partId': '1', 'mimeType': 'image/jpeg', 'filename': 'IMG_7215.jpeg',
+                         'headers': [{'name': 'Content-ID', 'value': '<photo1>'}, {'name': 'Content-Disposition', 'value': 'inline; filename=IMG_7215.jpeg'}],
+                         'body': {'size': 6, 'attachmentId': 'ATT-1'}},
+                        {'partId': '2', 'mimeType': 'image/png', 'filename': '',
+                         'headers': [{'name': 'Content-ID', 'value': '<logo@x>'}], 'body': {'size': 3, 'data': 'UE5H'}},
+                        {'partId': '3', 'mimeType': 'application/pdf', 'filename': 'big.pdf', 'headers': [],
+                         'body': {'size': 26 * 1024 * 1024, 'attachmentId': 'ATT-2'}}]}}
+        if url == GMAIL + '/messages/m3/attachments/ATT-1' and method == 'GET':
+            return {'size': 6, 'data': 'SlBFR3h4'}
         if url == GMAIL + '/drafts' and method == 'POST':
             return {'id': 'd1', 'message': {'id': 'm2', 'threadId': 't2'}}
         if url == GMAIL + '/drafts/send':
@@ -107,6 +121,32 @@ class GmailForMailTests(BrokerHTTPTests):
         self.assertEqual(self.mail('mail_search', {}, who=agent)[0], 200)
         self.assertEqual(self.mail('agent_access', {'mail': 'no_access'})[1]['agent_access']['level'], 'no_access')
         self.assertEqual(self.mail('mail_search', {}, who=agent)[1]['error']['code'], 'agent_access_denied')
+
+    def test_owner_reads_one_attachment_agents_never_do(self):
+        # wizard-mail#32 (contract 1.6): mail_get names each file's part and Content-ID; mail_attachment gives its bytes.
+        self.switch(True); self.connect_gmail()
+        code, got, _ = self.mail('mail_get', {'id': 'm3'})
+        self.assertEqual(code, 200, got)
+        self.assertEqual(got['message']['attachments'], [
+            {'name': 'IMG_7215.jpeg', 'mime': 'image/jpeg', 'size': 6, 'part': '1', 'content_id': 'photo1', 'inline': True},
+            {'name': 'big.pdf', 'mime': 'application/pdf', 'size': 26 * 1024 * 1024, 'part': '3', 'content_id': None, 'inline': False}])
+        self.assertEqual(got['message']['inline_parts'], [{'part': '2', 'mime': 'image/png', 'size': 3, 'content_id': 'logo@x'}])
+        self.assertIn('mail_attachment', self.mail('status')[1]['mail_calendar']['tools'])
+        code, one, _ = self.mail('mail_attachment', {'id': 'm3', 'part': '1'})
+        self.assertEqual(code, 200, one)
+        self.assertEqual(one['attachment'], {'name': 'IMG_7215.jpeg', 'mime': 'image/jpeg', 'size': 6, 'base64': 'SlBFR3h4'})
+        code, logo, _ = self.mail('mail_attachment', {'id': 'm3', 'part': '2'})
+        self.assertEqual((code, logo['attachment']['name'], logo['attachment']['base64']), (200, 'image.png', 'UE5H'))
+        code, body, _ = self.mail('mail_attachment', {'id': 'm3', 'part': '9'})
+        self.assertEqual((code, body['error']['code']), (404, 'not_found'))
+        code, body, _ = self.mail('mail_attachment', {'id': 'm3', 'part': '3'})
+        self.assertEqual((code, body['error']['code']), (413, 'attachment_too_big'))
+        self.assertFalse(any('ATT-2' in c[1] for c in self.fake.gmail_calls))  # too big is known before any bytes move
+        self.assertEqual(self.mail('mail_attachment', {'id': 'm3', 'part': '../1'})[0], 400)
+        agent = {'X-Wizard-Agent': 'main'}
+        self.assertNotIn('mail_attachment', self.mail('status', who=agent)[1]['mail_calendar']['tools'])
+        code, body, _ = self.mail('mail_attachment', {'id': 'm3', 'part': '1'}, who=agent)
+        self.assertEqual((code, body['error']['code']), (403, 'owner_only'))
 
     def test_account_without_gmail_and_missing_api_are_plain_errors(self):
         self.switch(True); self.calendar_connect()

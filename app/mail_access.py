@@ -19,7 +19,12 @@ WHAT = {'no_access': "Agents can't read your mail.",
 RANK = {level: n for n, level in enumerate(LEVELS)}
 # What each mail tool needs from an agent. None: agents never get it.
 NEEDS = {'mail_search': 'read_only', 'mail_get': 'read_only', 'mail_update': 'draft_only',
-         'mail_update_bulk': 'draft_only', 'mail_draft': 'draft_only', 'mail_send': None}
+         'mail_update_bulk': 'draft_only', 'mail_draft': 'draft_only', 'mail_send': None,
+         'mail_attachment': None}
+# mail_attachment (contract 1.6, wizard-mail#32): a file's bytes, for Mail to show a picture or save a file for the
+# owner. Agents read mail as text, so it is refused for every agent and never listed to one.
+OWNER_ONLY = ('mail_send', 'mail_attachment')
+ATTACHMENT_REFUSED = 'Agents read mail as text; attachments open in Mail for the owner.'
 SEND_REFUSED = ("Agents can't send mail on this Wizard. Write it with mail_draft; the owner reads and sends it "
                 'from Mail.')
 _lock = threading.Lock()
@@ -68,6 +73,8 @@ def check(caller, tool):
     if caller == 'owner':
         return
     need = NEEDS[tool]
+    if tool == 'mail_attachment':
+        raise Refused('owner_only', ATTACHMENT_REFUSED)
     if need is None:
         raise Refused('agent_send_refused', SEND_REFUSED)
     if RANK[level()] < RANK[need]:
