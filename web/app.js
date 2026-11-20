@@ -102,6 +102,26 @@ async function setAppAgent(app,agent,on){
  catch{dialog('Could not change agent access','Nothing was changed. Try again in a moment.');}
  finally{connectionsPending='';render();}
 }
+// An app's own agent level (Messenger's, wizard-messenger#342): read from and set in that app, which keeps it.
+function renderAppLevels(card,app){
+ const own=app.ownLevels,box=element('section',undefined,'google-mail-access');card.append(box);
+ if(own.accounts.length)box.append(element('p',own.accounts.map(a=>a.name?a.label+': '+a.name:a.label).join(', '),'google-help'));
+ else box.append(element('p','No chat account connected in '+app.name+' yet.','google-help'));
+ box.append(element('h4','What agents may do in '+app.name,'google-used-label'));
+ for(const agent of own.agents){
+  const l=element('label',agent.label,'wz-label'),s=element('select',undefined,'wz-input');
+  s.setAttribute('aria-label','What '+agent.label+' may do in '+app.name);
+  for(const x of own.levels){const o=element('option',x.label+(x.recommended?' (recommended)':''));o.value=x.id;s.append(o);}
+  s.value=agent.level;s.disabled=!!connectionsPending;l.append(s);box.append(l);
+  s.onchange=async()=>{
+   if(connectionsPending)return;connectionsPending=app.id;s.disabled=true;
+   try{app.ownLevels=await WizConnections.setLevel(fetch.bind(window),app.levels,agent.id,s.value);}
+   catch{s.value=agent.level;dialog('Could not change agent access','Nothing was changed. Try again in a moment.');}
+   finally{connectionsPending='';render();}
+  };
+ }
+ box.append(element('small','Kept in '+app.name+', so a change here also shows there.'));
+}
 function renderConnections(){
  append('h2','Agent access');
  append('p','Every account connected to this Wizard, and which of your agents may use it. A change here goes straight to the place that already keeps it, so it is the same choice you see everywhere else.','google-intro');
@@ -126,6 +146,7 @@ function renderConnections(){
    }
   }
   if(app.id==='connected-accounts'){if(state.mail?.on||state.workspace?.on)renderMailAccess(card);}
+  else if(app.ownLevels?.state==='ok')renderAppLevels(card,app);
   else card.append(element('small',(app.recommended?'Recommended: '+app.recommended+'. ':'')+'How much an agent may do there (for example read only or drafts only) is set in '+app.own+' for now.'));
  }
  const actions=element('div',undefined,'actions');list.append(actions);
