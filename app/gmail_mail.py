@@ -20,10 +20,22 @@ from email.utils import getaddresses, parsedate_to_datetime
 
 MAX_TEXT = 100_000
 GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me'
+# Reading one attachment (contract 1.6, wizard-mail#32): a file's id inside its message is Gmail's partId ("1", "1.2").
+PART = r'[0-9]+(\.[0-9]+)*'
+ATTACHMENT_ID = r'[A-Za-z0-9_-]{1,2048}'
+MAX_ATTACHMENT = 25 * 1024 * 1024
+MAX_PARTS = 50
 
 
 class BadArgs(ValueError):
     """Arguments the caller must fix (contract code invalid_arguments)."""
+
+
+class MailFault(Exception):
+    """A plain refusal with its own contract code (not_found, attachment_too_big, provider_rejected)."""
+    def __init__(self, code, message):
+        super().__init__(code)
+        self.code, self.message = code, message
 
 
 def text(args, name, maximum, required=True, default=''):
@@ -143,13 +155,35 @@ def _headers(message):
     return found
 
 
-def _attachments(part, found=None):
+def _part_header(part, name):
+    for header in part.get('headers', []) or []:
+        if str(header.get('name', '')).lower() == name:
+            return str(header.get('value', ''))
+    return ''
+
+
+def _content_id(part):
+    value = _part_header(part, 'content-id').strip().strip('<>').strip()
+    return value if value and len(value) <= 300 else None
+
+
+def _attachments(part, found=None, inline_parts=None):
+    """Files with a name (attachments) and, into inline_parts, nameless pictures with a Content-ID (cid: in the HTML).
+    Contract 1.6 (wizard-mail#32): each file says its `part` (Gmail partId), `content_id` and `inline`."""
     found = [] if found is None else found
     for child in part.get('parts', []) or []:
+        cid = _content_id(child)
+        size = (child.get('body') or {}).get('size')
         if child.get('filename'):
-            found.append({'name': str(child['filename'])[:200], 'mime': child.get('mimeType'), 'size': (child.get('body') or {}).get('size')})
-        _attachments(child, found)
-    return found[:50]
+            disposition = _part_header(child, 'content-disposition').strip().lower()
+            inline = disposition.startswith('inline') or bool(cid and not disposition.startswith('attachment'))
+            found.append({'name': str(child['filename'])[:200], 'mime': child.get('mimeType'), 'size': size,
+                          'part': str(child.get('partId') or '') or None, 'content_id': cid, 'inline': inline})
+        elif inline_parts is not None and cid and str(child.get('mimeType') or '').lower().startswith('image/'):
+            inline_parts.append({'part': str(child.get('partId') or '') or None, 'mime': child.get('mimeType'), 'size': size,
+                                 'content_id': cid})
+        _attachments(child, found, inline_parts)
+    return found[:MAX_PARTS]
 
 
 def _snippet(value):
@@ -226,14 +260,64 @@ def mail_get(call, args):
     message = call('GET', f'{GMAIL}/messages/{mid}', {'format': 'full'})
     body, truncated = _body_text(message.get('payload') or {})
     h = _headers(message)
+    inline_parts = []
     found = {**_summary(message), 'body_text': body, 'truncated': truncated, 'message_id_header': h.get('message-id', ''),
-             'attachments': _attachments(message.get('payload') or {})}
+             'attachments': _attachments(message.get('payload') or {}, None, inline_parts), 'inline_parts': inline_parts[:MAX_PARTS]}
     if 'DRAFT' in (message.get('labelIds') or []):
         found['draft_id'] = draft_id_for(call, message.get('id'), h.get('message-id', ''))
     if args.get('format') == 'html':
         html = _body_html(message.get('payload') or {})
         found['body_html'] = html[:MAX_HTML] if len(html) <= MAX_HTML else ''
     return {'message': found, 'untrusted': UNTRUSTED}
+
+
+def _find_part(part, wanted):
+    for child in part.get('parts', []) or []:
+        if str(child.get('partId') or '') == wanted:
+            return child
+        found = _find_part(child, wanted)
+        if found is not None:
+            return found
+    return None
+
+
+def _too_big():
+    return MailFault('attachment_too_big', f'That file is too big to open here (over {MAX_ATTACHMENT // 1048576} MB).')
+
+
+def mail_attachment(call, args):
+    """One file of a message, with its bytes (contract 1.6): for Mail to show a picture or save a file. Owner only
+    (mail_access.py refuses agents)."""
+    mid = _id(args, 'id')
+    wanted = _id(args, 'part', PART)
+    if len(wanted) > 64:
+        raise BadArgs('part is missing or not valid.')
+    message = call('GET', f'{GMAIL}/messages/{mid}', {'format': 'full'})
+    found = _find_part(message.get('payload') or {}, wanted)
+    if found is None or str(found.get('mimeType') or '').lower().startswith('multipart/'):
+        raise MailFault('not_found', 'That message has no such file.')
+    body = found.get('body') or {}
+    if isinstance(body.get('size'), int) and body['size'] > MAX_ATTACHMENT:
+        raise _too_big()
+    if body.get('attachmentId'):
+        aid = str(body['attachmentId'])
+        if not re.fullmatch(ATTACHMENT_ID, aid):
+            raise BadArgs('An attachment id from Gmail was not valid.')
+        raw = str(call('GET', f'{GMAIL}/messages/{mid}/attachments/{aid}').get('data') or '')
+    else:
+        raw = str(body.get('data') or '')
+    if len(raw) > MAX_ATTACHMENT * 4 // 3 + 1024:
+        raise _too_big()
+    try:
+        data = _b64url(raw)
+    except (binascii.Error, ValueError):
+        raise MailFault('provider_rejected', 'Gmail sent a file that could not be read.') from None
+    if len(data) > MAX_ATTACHMENT:
+        raise _too_big()
+    mime = _mime(found.get('mimeType'), str(found.get('filename') or ''))
+    name = str(found.get('filename') or '')[:200] or ('image' if mime.startswith('image/') else 'file') + (mimetypes.guess_extension(mime) or '')
+    return {'attachment': {'name': name, 'mime': mime, 'size': len(data), 'base64': base64.b64encode(data).decode('ascii')},
+            'untrusted': UNTRUSTED}
 
 
 def draft_id_for(call, mid, header=''):
@@ -489,5 +573,5 @@ def mail_send(call, args):
 # ---------- calendar ----------
 
 
-TOOLS = {'mail_search': mail_search, 'mail_get': mail_get, 'mail_update': mail_update,
+TOOLS = {'mail_search': mail_search, 'mail_get': mail_get, 'mail_attachment': mail_attachment, 'mail_update': mail_update,
          'mail_update_bulk': mail_update_bulk, 'mail_draft': mail_draft, 'mail_send': mail_send}

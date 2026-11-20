@@ -115,7 +115,7 @@ WORKSPACE_MCP_TOOLS = [
      'subject': {'type': 'string'}, 'body': {'type': 'string'}, 'reply_to_id': {'type': 'string'},
      'draft_id': {'type': 'string'}, **_ACCOUNT}, 'additionalProperties': False}},
 ]
-MAIL_TOOLS = ('mail_search', 'mail_get', 'mail_update', 'mail_update_bulk', 'mail_draft', 'mail_send')
+MAIL_TOOLS = ('mail_search', 'mail_get', 'mail_attachment', 'mail_update', 'mail_update_bulk', 'mail_draft', 'mail_send')
 MAX_MAIL_BODY = 26 * 1024 * 1024  # mail_draft carries up to 18 MB of files as base64
 MAIL_MESSAGES = {
     'service_off': 'Gmail for Mail is off in Connected accounts.',
@@ -131,7 +131,8 @@ MAIL_MESSAGES = {
     'google_disabled': 'Google is turned off in Connected accounts.',
 }
 MAIL_STATUS = {'invalid_arguments': 400, 'not_found': 404, 'rate_limited': 429, 'account_not_found': 404,
-               'account_required': 400, 'service_off': 409, 'google_permission_missing': 403}
+               'account_required': 400, 'service_off': 409, 'google_permission_missing': 403,
+               'attachment_too_big': 413, 'provider_rejected': 502}
 
 
 def mail_error(code, message=None):
@@ -247,7 +248,7 @@ class Handler(BaseHTTPRequestHandler):
                 value = broker.call('mail_status')
                 return self.send(200, {'contract': 'wizard.mail-calendar/1', 'source': 'google', 'via': 'own-client',
                                        'accounts': value['accounts'], 'mail_access': mail_access.view(),
-                                       'mail_calendar': {'tools': [t for t in MAIL_TOOLS if caller == 'owner' or t != 'mail_send']}})
+                                       'mail_calendar': {'tools': [t for t in MAIL_TOOLS if caller == 'owner' or t not in mail_access.OWNER_ONLY]}})
             if tool == 'agent_access' and self.command == 'POST':
                 if caller != 'owner': return self.send(403, {'error': {'code': 'owner_only', 'message': 'Only the owner changes agent access.'}})
                 if set(data) != {'mail'} or data['mail'] not in mail_access.LEVELS: return self.send(*mail_error('invalid_arguments', 'mail must be no_access, read_only or draft_only.'))
