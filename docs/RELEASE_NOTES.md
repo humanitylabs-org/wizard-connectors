@@ -1,3 +1,7 @@
+# Connected accounts 0.8.3
+
+- **Google's agent level on Agent access** (humanitylabs-org/wizard-google#30; needs this app's switch `grants-panel` and the Google app's switch `agent-access-panel` (Google 0.5.1), both off by default). The Google card now lists the Google accounts signed in to the Google app (names only) and Google's level for mail and for calendar, which applies to every agent. A change goes straight to the Google app, which still keeps and enforces it; a change in Mail or Calendar > Settings > Agent access shows here. With Google's switch off or an older Google app, the card says "set in Google for now" as before. See [CONNECTIONS_PANEL.md](CONNECTIONS_PANEL.md).
+
 # Connected accounts 0.8.2
 
 - **Messenger's agent level on Agent access** (humanitylabs-org/wizard-messenger#342; needs this app's switch `grants-panel` and Messenger's switch `connected-accounts-levels`, both off by default). The Messenger card now lists Messenger's connected chat accounts (names only) and one level picker per agent (No access, Read-only, Draft-only). It reads and sets the level through Messenger's own route, so Messenger stays the only place it is kept and enforced; with Messenger's switch off it says "set in Messenger for now" as before.

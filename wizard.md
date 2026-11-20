@@ -5,7 +5,7 @@ renamed_from: [wizard-connectors]
 name: Connected accounts
 type: external
 category: app
-version: 0.8.2
+version: 0.8.3
 summary: Owner-managed Google account broker and simulated private chat summaries.
 license: MIT
 source: https://github.com/humanitylabs-org/wizard-connectors

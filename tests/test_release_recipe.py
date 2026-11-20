@@ -9,7 +9,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class ReleaseRecipeTests(unittest.TestCase):
     def test_release_version_and_digest_pinned_image_on_every_service(self):
-        version='0.8.2'
+        version='0.8.3'
         config=json.loads((ROOT/'runtipi/config.json').read_text())
         self.assertEqual(config['version'],version)
         self.assertIn('version: '+version+'\n',(ROOT/'wizard.md').read_text())
