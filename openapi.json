@@ -5,15 +5,6 @@
     "version": "0.8.0"
   },
   "paths": {
-    "/api/grants": {
-      "get": {"summary": "Agent access: every account and each agent's level (owner; wizard-connectors#49)", "responses": {"200": {"description": "See docs/APP_GRANTS.md (wizard.app-grants/1)"}, "401": {"description": "Owner authentication required"}, "409": {"description": "Switch grants-panel is off"}}},
-      "post": {"summary": "Set one agent's level on one account (owner tap)", "responses": {"200": {"description": "See docs/APP_GRANTS.md (wizard.app-grants/1)"}, "401": {"description": "Owner authentication required"}, "409": {"description": "Switch grants-panel is off"}}}
-    },
-    "/api/grants/agents": {"post": {"summary": "Add an agent to the Agent access list (owner)", "responses": {"200": {"description": "See docs/APP_GRANTS.md (wizard.app-grants/1)"}, "401": {"description": "Owner authentication required"}, "409": {"description": "Switch grants-panel is off"}}}},
-    "/api/grants/audit": {"get": {"summary": "Latest grant checks, allowed and refused (owner)", "responses": {"200": {"description": "See docs/APP_GRANTS.md (wizard.app-grants/1)"}, "401": {"description": "Owner authentication required"}, "409": {"description": "Switch grants-panel is off"}}}},
-    "/service/grants/v1/status": {"get": {"summary": "wizard.app-grants/1 accounts and levels", "security": [{"WizardGrant": []}], "responses": {"200": {"description": "See docs/APP_GRANTS.md (wizard.app-grants/1); no tokens"}, "403": {"description": "App grant required"}, "409": {"description": "Switch grants-panel is off"}}}},
-    "/service/grants/v1/check": {"post": {"summary": "May agent X do Y on account Z? Audited", "security": [{"WizardGrant": []}], "responses": {"200": {"description": "See docs/APP_GRANTS.md (wizard.app-grants/1); no tokens"}, "403": {"description": "App grant required"}, "409": {"description": "Switch grants-panel is off"}}}},
-    "/service/grants/v1/accounts": {"post": {"summary": "A connector app lists the accounts it holds", "security": [{"WizardGrant": []}], "responses": {"200": {"description": "See docs/APP_GRANTS.md (wizard.app-grants/1); no tokens"}, "403": {"description": "App grant required"}, "409": {"description": "Switch grants-panel is off"}}}},
     "/api/google/setup/intake": {
       "post": {
         "summary": "Internal-only, single-use Google app credential deposit (public/proxied ingress denies)",
