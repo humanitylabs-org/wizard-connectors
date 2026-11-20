@@ -1,3 +1,7 @@
+# Connected accounts 0.7.1
+
+- **Google sign-in starts on rootless Docker** (wizard-connectors#45; fix, on for everyone). The Google sign-in service no longer crash-loops when it cannot lock down its own data folder (rootless Docker gives that folder to the box user); it carries on as long as it can write there, and the saved sign-ins stay encrypted and private to it.
+
 # Connected accounts 0.7.0
 
 - **Mail opens photos and files from Gmail** (humanitylabs-org/wizard-mail#32; fix, on for everyone). `mail_get` names each attachment's part and Content-ID, and the new owner-only `mail_attachment` gives Mail one file's bytes (up to 25 MB), so Mail shows photos in emails and saves attachments. Agents never get file bytes. Contract `wizard.mail-calendar/1` 1.6; see [MAIL_API.md](MAIL_API.md).
