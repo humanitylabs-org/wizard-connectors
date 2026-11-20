@@ -102,6 +102,44 @@ async function setAppAgent(app,agent,on){
  catch{dialog('Could not change agent access','Nothing was changed. Try again in a moment.');}
  finally{connectionsPending='';render();}
 }
+// An app's own agent level (Messenger's, wizard-messenger#342): read from and set in that app, which keeps it.
+function renderAppLevels(card,app){
+ const own=app.ownLevels,box=element('section',undefined,'google-mail-access');card.append(box);
+ if(own.accounts.length)box.append(element('p',own.accounts.map(a=>a.name?a.label+': '+a.name:a.label).join(', '),'google-help'));
+ else box.append(element('p','No chat account connected in '+app.name+' yet.','google-help'));
+ box.append(element('h4','What agents may do in '+app.name,'google-used-label'));
+ for(const agent of own.agents){
+  const l=element('label',agent.label,'wz-label'),s=element('select',undefined,'wz-input');
+  s.setAttribute('aria-label','What '+agent.label+' may do in '+app.name);
+  for(const x of own.levels){const o=element('option',x.label+(x.recommended?' (recommended)':''));o.value=x.id;s.append(o);}
+  s.value=agent.level;s.disabled=!!connectionsPending;l.append(s);box.append(l);
+  s.onchange=async()=>{
+   if(connectionsPending)return;connectionsPending=app.id;s.disabled=true;
+   try{app.ownLevels=await WizConnections.setLevel(fetch.bind(window),app.levels,agent.id,s.value);}
+   catch{s.value=agent.level;dialog('Could not change agent access','Nothing was changed. Try again in a moment.');}
+   finally{connectionsPending='';render();}
+  };
+ }
+ box.append(element('small','Kept in '+app.name+', so a change here also shows there.'));
+}
+// An app's own level for mail and calendar, one for every agent (Google's, wizard-google#30): read from and set in
+// that app, which keeps and checks it.
+function renderOneLevel(card,app){
+ const box=element('section',undefined,'google-mail-access');card.append(box);
+ box.append(element('h4','What agents may do in '+app.name,'google-used-label'));
+ for(const k of app.appLevelView.kinds){
+  const l=element('label',k.name,'wz-label'),s=element('select',undefined,'wz-input');s.setAttribute('aria-label',k.name+' level in '+app.name);
+  for(const x of k.levels){const o=element('option',x.label);o.value=x.id;s.append(o);}s.value=k.level;s.disabled=!!connectionsPending;l.append(s);box.append(l);
+  box.append(element('small',k.what));
+  s.onchange=async()=>{
+   if(connectionsPending)return;connectionsPending=app.id;s.disabled=true;
+   try{app.appLevelView=await WizConnections.setAppLevel(fetch.bind(window),app,k.kind,s.value);}
+   catch{s.value=k.level;dialog('Could not change agent access','Nothing was changed. Try again in a moment.');}
+   finally{connectionsPending='';render();}
+  };
+ }
+ box.append(element('small','This applies to every agent. Kept in '+app.name+', so a change here also shows there.'));
+}
 function renderConnections(){
  append('h2','Agent access');
  append('p','Every account connected to this Wizard, and which of your agents may use it. A change here goes straight to the place that already keeps it, so it is the same choice you see everywhere else.','google-intro');
@@ -114,7 +152,7 @@ function renderConnections(){
   if(app.id==='connected-accounts'){
    const g=state.google.accounts;
    card.append(element('p',g.length?g.map(a=>a.email||'Google account').join(', '):'No Google account connected yet.','google-help'));
-  }else card.append(element('p',app.own_level?(app.own_level.accounts.length?app.own_level.accounts.join(', '):'No account signed in there yet.'):app.holds,'google-help'));
+  }else card.append(element('p',app.appLevelView?(app.appLevelView.accounts.length?app.appLevelView.accounts.join(', '):'No account signed in to '+app.name+' yet.'):app.holds,'google-help'));
   if(app.state==='ok'){
    card.append(element('h4','Agents that may use '+app.name,'google-used-label'));
    if(!app.agents.length)card.append(element('small','No agents on this Wizard yet.'));
@@ -126,23 +164,12 @@ function renderConnections(){
    }
   }
   if(app.id==='connected-accounts'){if(state.mail?.on||state.workspace?.on)renderMailAccess(card);}
-  else if(app.own_level)renderOwnLevel(card,app);
+  else if(app.ownLevels?.state==='ok')renderAppLevels(card,app);
+  else if(app.appLevelView)renderOneLevel(card,app);
   else card.append(element('small',(app.recommended?'Recommended: '+app.recommended+'. ':'')+'How much an agent may do there (for example read only or drafts only) is set in '+app.own+' for now.'));
  }
  const actions=element('div',undefined,'actions');list.append(actions);
  button('Connect a new account',()=>{googleSetup=null;navigate('google');},actions,'primary');
-}
-// An app's own agent level (wizard-google#30): read from and set in that app, which keeps and enforces it.
-function renderOwnLevel(card,app){
- const box=element('section',undefined,'google-mail-access');card.append(box);
- box.append(element('h4','What agents may do in '+app.name,'google-used-label'));
- for(const k of app.own_level.kinds){
-  const l=element('label',k.name,'wz-label'),s=element('select',undefined,'wz-input');s.setAttribute('aria-label',k.name+' level in '+app.name);
-  for(const x of k.levels){const o=element('option',x.label);o.value=x.id;s.append(o);}s.value=k.level;l.append(s);box.append(l);
-  const what=element('small',k.what);box.append(what);
-  s.onchange=async()=>{s.disabled=true;try{app.own_level=await WizConnections.setLevel(fetch.bind(window),app,k.kind,s.value);render();}catch{s.value=k.level;s.disabled=false;dialog('Could not change agent access','Nothing was changed. Try again in a moment.');}};
- }
- box.append(element('small','This applies to every agent. '+app.own+' keeps and checks it, so it is the same choice as in '+app.own+'.'));
 }
 $('grants-row').onclick=async()=>{connections=null;navigate('grants');await loadConnections();if(view==='grants')render();};
 async function accountAction(path,data){try{await api(path,data);await refresh();}catch(e){dialog('Could not update account','Try again in a moment. If this keeps happening, sign in again.');}}

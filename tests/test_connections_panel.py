@@ -61,8 +61,22 @@ const store = {
   'messenger': [{id:'hermes',label:'Hermes',enabled:false},{id:'oscar',label:'Oscar',enabled:true,privacy:'private'}],
 };
 const reply = (status, body) => ({status, ok: status >= 200 && status < 300, json: async () => body});
+// Messenger's own levels (wizard-messenger#342): the only copy, kept in "Messenger".
+const messenger = {on: true, agents: [{id:'hermes',label:'Your Wizard agent',main:true,level:'no_access'},{id:'oscar',label:'Oscar',main:false,level:'read_only'}]};
+const levels = () => ({app:'messenger', accounts:[{network:'whatsapp',label:'WhatsApp',name:'Sam Example'}],
+  agents: messenger.agents, levels:[{id:'no_access',label:'No access',recommended:false},{id:'read_only',label:'Read-only',recommended:false},{id:'draft_only',label:'Draft-only',recommended:true}]});
 async function fake(url, init) {
   calls.push([init.method, url, init.body || '']);
+  if (url === '/messenger/api/agent-levels') {
+    if (!messenger.on) return reply(404, {error: 'No such route', code: 'not_found'});
+    if (init.method === 'POST') {
+      if (init.headers['X-Wizard-Agent-Level'] !== '1' || init.headers['Content-Type'] !== 'application/json') return reply(403, {code: 'level_header_required'});
+      const {agent, level} = JSON.parse(init.body);
+      if (!['no_access','read_only','draft_only'].includes(level)) return reply(400, {code: 'invalid_level'});
+      messenger.agents = messenger.agents.map(a => a.id === agent ? {...a, level} : a);
+    }
+    return reply(200, levels());
+  }
   const id = decodeURIComponent(url.split('/')[4]);
   if (init.credentials !== 'same-origin') throw new Error('credentials');
   if (!store[id]) return reply(404, {error: 'app_not_found', check: 'app.id'});
@@ -88,6 +102,15 @@ async function fake(url, init) {
   out.html = [html.reachable, html.apps.map(a => a.id + ':' + a.state)];
   try { await C.setAgents(async () => reply(403, {error: 'access_required'}), 'messenger', []); out.refused = 'no'; }
   catch (e) { out.refused = e.message; }
+  out.levels = msg.ownLevels;
+  out.noLevelsElsewhere = view.apps.filter(a => a.id !== 'messenger').map(a => a.ownLevels === undefined);
+  out.set = (await C.setLevel(fake, msg.levels, 'hermes', 'draft_only')).agents.map(a => a.id + ':' + a.level);
+  out.post = calls.filter(c => c[0] === 'POST').map(c => [c[1], c[2]]);
+  messenger.agents[1].level = 'no_access';  // changed in Messenger: the panel shows it on its next read
+  out.reread = (await C.load(fake)).apps.find(a => a.id === 'messenger').ownLevels.agents.map(a => a.id + ':' + a.level);
+  try { await C.setLevel(fake, msg.levels, 'hermes', 'draft_and_send'); out.badLevel = 'no'; } catch (e) { out.badLevel = e.message; }
+  messenger.on = false;  // Messenger's switch off (or an older Messenger): "set in Messenger" as before
+  out.offState = (await C.load(fake)).apps.find(a => a.id === 'messenger').ownLevels.state;
   console.log(JSON.stringify(out));
 })();
 """
@@ -122,17 +145,17 @@ async function fake(url, init) {
   const out = {};
   const view = await C.load(fake);
   const g = view.apps.find(a => a.id === 'wizard-google');
-  out.google = [g.state, g.own_level.accounts, g.own_level.kinds.map(k => k.kind + ':' + k.level)];
-  out.set = (await C.setLevel(fake, g, 'calendar', 'can_edit')).kinds.map(k => k.kind + ':' + k.level);
+  out.google = [g.state, g.appLevelView.accounts, g.appLevelView.kinds.map(k => k.kind + ':' + k.level)];
+  out.set = (await C.setAppLevel(fake, g, 'calendar', 'can_edit')).kinds.map(k => k.kind + ':' + k.level);
   out.kept = google;
-  try { await C.setLevel(fake, g, 'mail', 'send'); out.bad = 'no'; } catch (e) { out.bad = e.message; }
+  try { await C.setAppLevel(fake, g, 'mail', 'send'); out.bad = 'no'; } catch (e) { out.bad = e.message; }
   out.posts = calls.filter(c => c[0] === 'POST').map(c => [c[1], c[2], c[3]]);
   // Google's switch off (404), an older Google, or the browser boundary: no level, the note stays "set in Google".
   const off = await C.load(async (url, init) => url.startsWith('/wizard/v1/') ? fake(url, init) : reply(404, {error: {code: 'not_found'}}));
-  out.off = off.apps.filter(a => a.id === 'wizard-google').map(a => [a.state, a.own_level]);
+  out.off = off.apps.filter(a => a.id === 'wizard-google').map(a => [a.state, a.appLevelView]);
   // Agent Service out of reach but Google answers: Google's accounts and level are still shown.
   const down = await C.load(async (url, init) => { if (url.startsWith('/wizard/v1/')) throw new TypeError('x'); return fake(url, init); });
-  out.down = [down.reachable, down.apps.map(a => a.id + ':' + a.state + ':' + !!a.own_level)];
+  out.down = [down.reachable, down.apps.map(a => a.id + ':' + a.state + ':' + !!a.appLevelView)];
   console.log(JSON.stringify(out));
 })();
 """
@@ -174,6 +197,30 @@ class ConnectionsScriptTests(unittest.TestCase):
         self.assertEqual(out['down'], [False, ['connected-accounts:unavailable']])
         self.assertEqual(out['html'], [False, ['connected-accounts:unavailable']])
         self.assertEqual(out['refused'], 'access_required')
+
+    def test_reads_and_sets_messengers_own_level_in_messenger(self):
+        run = subprocess.run(['node', '-e', NODE_CHECK, str(ROOT / 'web/connections.js')], capture_output=True, text=True, timeout=30)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        out = json.loads(run.stdout)
+        # wizard-messenger#342: the Messenger card reads Messenger's accounts (names only) and per-agent level.
+        self.assertEqual(out['levels']['state'], 'ok')
+        self.assertEqual(out['levels']['accounts'], [{'label': 'WhatsApp', 'name': 'Sam Example'}])
+        self.assertEqual([(a['id'], a['main'], a['level']) for a in out['levels']['agents']],
+                         [('hermes', True, 'no_access'), ('oscar', False, 'read_only')])
+        self.assertEqual([l['id'] for l in out['levels']['levels'] if l['recommended']], ['draft_only'])
+        self.assertEqual(out['noLevelsElsewhere'], [True])
+        # A change here is a POST to Messenger itself (the only store), and the answer is what Messenger now holds.
+        self.assertEqual(out['post'], [['/messenger/api/agent-levels', '{"agent":"hermes","level":"draft_only"}']])
+        self.assertEqual(out['set'], ['hermes:draft_only', 'oscar:read_only'])
+        # A change made in Messenger shows on the next read.
+        self.assertEqual(out['reread'], ['hermes:draft_only', 'oscar:no_access'])
+        self.assertEqual(out['badLevel'], 'invalid_level')
+        self.assertEqual(out['offState'], 'off')
+
+    def test_messenger_card_draws_its_levels(self):
+        app_js = (ROOT / 'web/app.js').read_text()
+        self.assertIn("app.ownLevels?.state==='ok'", app_js)
+        self.assertIn('WizConnections.setLevel(', app_js)
 
 
 def load_tests(loader, tests, pattern):
