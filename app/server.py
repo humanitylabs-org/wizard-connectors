@@ -15,8 +15,9 @@ from jobs import Jobs
 from private_model import PrivateModel, Blocked
 from service_rpc import RPC, RemotePrivateModel
 from google_broker import Denied
-from grants import calendar_caller, app_caller
+from grants import calendar_caller, app_caller, any_app_caller
 import mail_access
+import agent_grants
 import re
 import sys
 
@@ -133,6 +134,16 @@ MAIL_MESSAGES = {
 MAIL_STATUS = {'invalid_arguments': 400, 'not_found': 404, 'rate_limited': 429, 'account_not_found': 404,
                'account_required': 400, 'service_off': 409, 'google_permission_missing': 403,
                'attachment_too_big': 413, 'provider_rejected': 502}
+
+
+# One place for what each agent may do with each connected account (wizard-connectors#49, contract
+# wizard.app-grants/1, docs/APP_GRANTS.md). Off by default; the owner's taps here are the only way to change a grant.
+GRANTS_SWITCH = 'grants-panel'
+GRANTS_STATUS = {'service_off': 409, 'account_unknown': 404, 'too_many_agents': 409, 'level_not_offered': 400}
+
+
+def google_accounts():
+    return google_status().get('accounts', [])
 
 
 def mail_error(code, message=None):
@@ -308,6 +319,30 @@ class Handler(BaseHTTPRequestHandler):
             return fail(code, message or None)
         except OSError: return fail('local_storage_unavailable', 'Connected accounts could not save that.')
 
+    def grants_service(self, path, data=None):
+        """wizard.app-grants/1 for apps and the MCP gateway (box app network, any app with a grant to this one).
+        GET status; POST check {agent, account, action, app?} -> {allowed, level, need, reason}; POST accounts
+        {accounts:[{id, kind, label, max?}]} lists the calling connector app's accounts. Never changes a grant."""
+        app = any_app_caller(self.headers)
+        if not app: return self.send(403, {'error': {'code': 'app_grant_required', 'message': 'Only Wizard apps may ask this.'}})
+        if not switch_on(GRANTS_SWITCH): return self.send(409, {'error': {'code': 'service_off', 'message': 'Agent access in Connected accounts is off.'}})
+        tool = path[len('/service/grants/v1/'):]
+        try:
+            if tool == 'status' and self.command == 'GET':
+                return self.send(200, {'contract': agent_grants.CONTRACT, 'levels': list(agent_grants.LEVELS),
+                                       'accounts': [{k: a[k] for k in ('id', 'kind', 'label', 'max')} for a in agent_grants.all_accounts(google_accounts())]})
+            if tool == 'check' and self.command == 'POST':
+                if not isinstance(data, dict) or not {'agent', 'account', 'action'} <= set(data) <= {'agent', 'account', 'action', 'app'}:
+                    raise agent_grants.Invalid('invalid_arguments')
+                return self.send(200, agent_grants.check(google_accounts(), app, data['agent'], data['account'], data['action'], data.get('app')))
+            if tool == 'accounts' and self.command == 'POST':
+                if not isinstance(data, dict) or set(data) != {'accounts'}: raise agent_grants.Invalid('invalid_arguments')
+                return self.send(200, {'contract': agent_grants.CONTRACT, 'registered': agent_grants.register(app, data['accounts'])})
+            return self.send(404, {'error': {'code': 'not_found', 'message': 'Not found.'}})
+        except agent_grants.Invalid as e:
+            return self.send(GRANTS_STATUS.get(str(e), 400), {'error': {'code': str(e), 'message': 'Check the request against wizard.app-grants/1.'}})
+        except OSError: return self.send(503, {'error': {'code': 'local_storage_unavailable', 'message': 'Connected accounts could not save that.'}})
+
     def do_DELETE(self):
         if not self.trusted(): return
         if not self.human(): return self.send(401, {'error':'owner_auth_required'})
@@ -323,6 +358,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.mail_service(path)
         if path.startswith('/service/google/v1/'):
             return self.google_app_service(path)
+        if path.startswith('/service/grants/v1/'):
+            return self.grants_service(path)
         if not self.trusted(callback=path in ('/api/google/callback','/privacy')): return
         if path == '/privacy':
             return self.send(200,(ROOT/'web/privacy.html').read_bytes(),'text/html; charset=utf-8')
@@ -363,7 +400,12 @@ class Handler(BaseHTTPRequestHandler):
                     "threads":[{"id":k,"title":v["title"],"count":len(v["messages"])} for k,v in THREADS.items()],
                     "mail":{"on":switch_on(MAIL_SWITCH),"scope":"https://www.googleapis.com/auth/gmail.modify","agent_access":mail_access.view()},
                     "workspace":{"on":switch_on(WORKSPACE_SWITCH),"scopes":["https://www.googleapis.com/auth/drive.readonly","https://www.googleapis.com/auth/contacts.readonly"]},
-                    "calendar_edits":{"on":switch_on(CALENDAR_EDIT_SWITCH),"scope":CALENDAR_EDIT_SCOPE}})
+                    "calendar_edits":{"on":switch_on(CALENDAR_EDIT_SWITCH),"scope":CALENDAR_EDIT_SCOPE},
+                    "grants_panel":{"on":switch_on(GRANTS_SWITCH)}})
+            if path in ('/api/grants', '/api/grants/audit'):
+                if not switch_on(GRANTS_SWITCH): return self.send(409, {'error':'service_off'})
+                if path == '/api/grants/audit': return self.send(200, {'contract': agent_grants.CONTRACT, 'entries': agent_grants.audit()})
+                return self.send(200, agent_grants.view(google_accounts()))
             if path.startswith("/api/conversations/"):
                 return self.send(200, snapshot(path.rsplit("/",1)[1]))
             if path.startswith("/api/results/"):
@@ -379,7 +421,11 @@ class Handler(BaseHTTPRequestHandler):
         is_calendar = path.startswith('/service/calendar/')
         is_mail = path.startswith('/service/mail/v1/')
         is_google = path.startswith('/service/google/v1/')
-        if is_google:
+        is_grants = path.startswith('/service/grants/v1/')
+        if is_grants:
+            if not any_app_caller(self.headers):
+                return self.send(403, {'error': {'code': 'app_grant_required', 'message': 'Only Wizard apps may ask this.'}})
+        elif is_google:
             if not app_caller(self.headers, 'wizard-google'):
                 return self.send(403, {'error': {'code': 'google_grant_required', 'message': 'Only the Google app may use this.'}})
         elif is_mail:
@@ -405,6 +451,7 @@ class Handler(BaseHTTPRequestHandler):
         if is_calendar: return self.calendar_service(path, data)
         if is_mail: return self.mail_service(path, data)
         if is_google: return self.google_app_service(path, data)
+        if is_grants: return self.grants_service(path, data)
         if path == '/api/google/setup/intake':
             if set(data) != {'client_id','client_secret'}: return self.send(400, {'error':'invalid_request'})
             try:
@@ -454,6 +501,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200,broker.call('save_agreements', **data))
             if path == '/api/google/client' and set(data) == {'client_id','client_secret','redirect_uri'}:
                 return self.send(200,broker.call('save_client',**data))
+            if path in ('/api/grants', '/api/grants/agents'):
+                if not switch_on(GRANTS_SWITCH): return self.send(409,{'error':'service_off'})
+                try:
+                    if path == '/api/grants/agents' and set(data) == {'agent'}:
+                        return self.send(200,agent_grants.add_agent(google_accounts(),data['agent']))
+                    if path == '/api/grants' and {'account','agent','level'} <= set(data) <= {'account','agent','level','app'}:
+                        return self.send(200,agent_grants.set_level(google_accounts(),data['account'],data['agent'],data['level'],data.get('app')))
+                except agent_grants.Invalid as e:
+                    return self.send(GRANTS_STATUS.get(str(e),400),{'error':str(e)})
+                raise ValueError()
             if path == '/api/mail/access' and set(data) == {'level'}:
                 if not (switch_on(MAIL_SWITCH) or switch_on(WORKSPACE_SWITCH)): return self.send(409,{'error':'service_off'})
                 return self.send(200,mail_access.set_level(data['level']))
@@ -582,6 +639,11 @@ SWITCHES = [
                     'connected here, with no sign-in in the Google app. Each account gets an Allow for Calendar edits. '
                     'What agents may do stays your choice in Calendar > Settings > Agent access.',
      'default': False, 'issues': ['humanitylabs-org/wizard-connectors#29']},
+    {'id': 'grants-panel', 'name': 'Agent access in one place',
+     'description': 'One list of every connected account with what each agent may do on it (No access, Read, Draft, '
+                    'Send), changed only by your taps here. Apps ask Connected accounts before an agent acts, and '
+                    'every yes or no is logged. New agents get no access until you grant it.',
+     'default': False, 'issues': ['humanitylabs-org/wizard-connectors#49']},
 ]
 _SW_CONTRACT = 'wizard.app-switches/1'
 _SW_ROUTE = _sw_re.compile(r'(?:/[a-z0-9][a-z0-9-]{0,62})?/api/switches/?')

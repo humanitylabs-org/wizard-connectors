@@ -88,9 +88,52 @@ function renderRootGoogle(){
  const account=n===1?(g.accounts[0].email||'1 account'):n+' accounts';
  $('google-summary').textContent=!g.client_configured?'Google app not set up':n?account+' · Calendar '+(calendarOn?'on':'off'):'Not connected';
 }
-async function refresh(){state=await api('state');$('unlock').hidden=true;$('workspace').hidden=false;renderRootGoogle();render();}
-function render(){detail.replaceChildren();document.body.dataset.view=view;if(!state)return;renderRootGoogle();if(view==='root')return;
-button('← Back',back);if(view==='google')return renderGoogle();}
+async function refresh(){state=await api('state');$('unlock').hidden=true;$('workspace').hidden=false;renderRootGoogle();if(view==='grants')await loadGrants();render();}
+function render(){detail.replaceChildren();document.body.dataset.view=view;if(!state)return;renderRootGoogle();$('grants-row').hidden=!state.grants_panel?.on;if(view==='grants'&&!state.grants_panel?.on)view='root';if(view==='root')return;
+button('← Back',back);if(view==='google')return renderGoogle();if(view==='grants')return renderGrants();}
+// Agent access in one place (switch grants-panel, wizard-connectors#49, contract wizard.app-grants/1): every connected
+// account with each agent's level as taps. Only these taps change a grant; apps only ask.
+let grants=null,grantsAudit=[],grantsPending=false;
+async function loadGrants(){grants=await api('grants');try{grantsAudit=(await api('grants/audit')).entries;}catch{grantsAudit=[];}}
+async function setGrant(account,agent,level){
+ if(grantsPending)return;grantsPending=true;
+ try{grants=await api('grants',{account,agent,level});}catch{dialog('Could not change agent access','Nothing was changed. Try again in a moment.');}
+ finally{grantsPending=false;render();}
+}
+function renderGrants(){
+ append('h2','Agent access');
+ append('p','Every account connected to this Wizard, and what each agent may do with it. Apps ask here before an agent acts. Only your taps change this; a new agent starts with no access.','google-intro');
+ if(!grants){append('p','Loading…');return;}
+ const list=append('section',undefined,'grants-list');list.setAttribute('aria-label','Accounts and agent access');
+ if(!grants.accounts.length)list.append(element('p','No accounts connected yet.'));
+ for(const a of grants.accounts){
+  const card=element('article',undefined,'google-account');list.append(card);
+  const head=element('div',undefined,'google-account-head');card.append(head);
+  head.append(element('h3',a.label));head.append(element('span',{google:'Google',microsoft:'Microsoft',messenger:'Messenger',bank:'Bank',health:'Health',ai:'AI account'}[a.kind]||'Account','google-status-pill'));
+  for(const agent of grants.agents){
+   const row=element('div',undefined,'grants-row');card.append(row);
+   row.append(element('span',agent==='main'?'Your wizard':agent,'google-use-name'));
+   const group=element('div',undefined,'grants-levels');group.setAttribute('role','radiogroup');group.setAttribute('aria-label',(agent==='main'?'Your wizard':agent)+' on '+a.label);row.append(group);
+   for(const id of a.levels){
+    const label=grants.levels.find(x=>x.id===id).label,b=element('button',label,'grants-level');b.type='button';b.setAttribute('role','radio');
+    const on=a.agents[agent]===id;b.setAttribute('aria-checked',String(on));if(on)b.classList.add('primary');b.disabled=grantsPending;
+    b.onclick=()=>{if(!on)setGrant(a.id,agent,id);};group.append(b);
+   }
+   if(a.recommended&&a.agents[agent]!==a.recommended)row.append(element('small','Recommended: '+grants.levels.find(x=>x.id===a.recommended).label+' only'));
+   if(a.apps?.[agent])row.append(element('small','Set per app: '+Object.entries(a.apps[agent]).map(([app,l])=>app+' '+l).join(', ')));
+  }
+ }
+ const actions=element('div',undefined,'actions');list.append(actions);
+ button('Connect a new account',()=>{googleSetup=null;navigate('google');},actions,'primary');
+ const add=disclosure('Add an agent',list),form=element('form',undefined,'wz-sec');add.append(form);
+ const l=element('label','Agent name','wz-label'),i=element('input',undefined,'wz-input');i.required=true;i.maxLength=63;i.pattern='[A-Za-z0-9][A-Za-z0-9_-]{0,62}';l.append(i);form.append(l);
+ const save=button('Add',()=>{},form);save.type='submit';
+ form.onsubmit=async e=>{e.preventDefault();try{grants=await api('grants/agents',{agent:i.value});render();}catch{dialog('Could not add agent','Use letters, numbers, - or _.');}};
+ const log=disclosure('Recent checks',list);
+ if(!grantsAudit.length)log.append(element('p','No app has asked yet.'));
+ for(const x of grantsAudit.slice(0,30))log.append(element('small',new Date(x.at*1000).toLocaleString()+' · '+x.by+' asked: may '+x.agent+' '+x.action+' on '+(grants.accounts.find(y=>y.id===x.account)?.label||x.account)+'? '+(x.allowed?'Allowed':'Refused ('+x.reason.replace('_',' ')+')'),'grants-audit'));
+}
+$('grants-row').onclick=async()=>{try{await loadGrants();}catch{dialog('Could not load agent access','Try again in a moment.');return;}navigate('grants');};
 async function accountAction(path,data){try{await api(path,data);await refresh();}catch(e){dialog('Could not update account','Try again in a moment. If this keeps happening, sign in again.');}}
 function googleError(code){return ({sign_in_timeout:'This sign-in link is more than a day old. Try again to open a fresh Google sign-in window.',authorization_busy:'There are several unfinished sign-in attempts. Wait a few minutes, then try again.',service_unavailable:'Google connections are temporarily unavailable. Try again in a moment.',google_disabled:'Google connections are turned off. Ask your wizard to enable them, then try again.',google_configuration_required:'Your Google app needs setting up before you can connect an account.',broker_unavailable:'Google connections are temporarily unavailable. Check again in a moment.',provider_unavailable:'Google did not respond. Try again in a moment.',owner_auth_required:'Your owner session has expired. Close and reopen Connected accounts, then try again.',invalid_authorization_url:'Google did not return a safe sign-in link. Try again; if it keeps happening, ask your wizard to check Google setup.',local_storage_unavailable:'Your Wizard could not save the sign-in request. Ask your wizard to check its storage.'})[code]||'Could not prepare Google sign-in. Try again; if it keeps happening, ask your wizard to check Google setup.';}
 async function authorize(account=null,youtube=false,calendar=true,gmail=false,workspace=false,calendarEdits=false){
