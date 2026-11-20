@@ -1,3 +1,7 @@
+# Connected accounts 0.8.0
+
+- **Agent access in one place** (wizard-connectors#49; switch `grants-panel`, off by default). Connected accounts > Agent access lists every connected account with what each agent may do on it (No access, Read, Draft, Send) as taps; only the owner's taps change it, and a new agent starts with no access (Messenger accounts suggest Draft only). Apps and the MCP gateway ask `POST /service/grants/v1/check` (contract `wizard.app-grants/1`) and every yes or no is logged under Recent checks. Other connector apps can list their accounts here. Enforcing it in each app comes next. See [APP_GRANTS.md](APP_GRANTS.md).
+
 # Connected accounts 0.7.1
 
 - **Google sign-in starts on rootless Docker** (wizard-connectors#45; fix, on for everyone). The Google sign-in service no longer crash-loops when it cannot lock down its own data folder (rootless Docker gives that folder to the box user); it carries on as long as it can write there, and the saved sign-ins stay encrypted and private to it.
