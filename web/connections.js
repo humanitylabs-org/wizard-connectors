@@ -8,7 +8,7 @@
  // Apps that hold connected accounts, by installed app id. Only the ones the Agent Service knows are shown.
  const APPS=[
   {id:'connected-accounts',name:'Connected accounts',holds:'Google accounts connected here',own:'here'},
-  {id:'wizard-google',name:'Google',holds:'Google accounts signed in to the Google app',own:'Google'},
+  {id:'wizard-google',name:'Google',holds:'Google accounts signed in to the Google app',own:'Google',level:'/wizard-google/api/panel/agent-access'},
   {id:'wizard-microsoft',name:'Microsoft',holds:'Microsoft accounts',own:'Microsoft'},
   {id:'messenger',name:'Messenger',holds:'WhatsApp, Signal and other chat accounts',own:'Messenger',recommended:'Draft-only'},
   {id:'wizard-mail',name:'Mail',holds:'Mail accounts',own:'Mail'},
@@ -37,11 +37,39 @@
   const agents=r.ok?agentsOf(d):null;
   return agents?{state:'ok',agents}:{state:'unavailable'};
  }
+ // An app's own agent level, read from and set in that app (wizard-google#30: the Google app's owner route behind its
+ // switch agent-access-panel). Nothing is kept here. null: the app does not offer it (switch off, older app, boundary).
+ const levelOpts=(method,body)=>{const o=opts(method,body);o.headers['X-Wizard-Agent-Access']='1';return o;};
+ function levelOf(value){
+  const a=value&&value.agent_access;
+  if(!a||!Array.isArray(a.levels)||!Array.isArray(value.accounts))return null;
+  const pick=(id,levels)=>Array.isArray(levels)&&levels.some(x=>x&&x.id===id)?id:null;
+  const kinds=[];
+  if(pick(a.mail,a.levels))kinds.push({kind:'mail',name:'Mail',level:a.mail,what:String(a.what||''),levels:a.levels.filter(x=>x&&typeof x.id==='string').map(x=>({id:x.id,label:String(x.label||x.id)}))});
+  if(pick(a.calendar,a.calendar_levels))kinds.push({kind:'calendar',name:'Calendar',level:a.calendar,what:String(a.calendar_what||''),levels:a.calendar_levels.filter(x=>x&&typeof x.id==='string').map(x=>({id:x.id,label:String(x.label||x.id)}))});
+  if(!kinds.length)return null;
+  return {accounts:value.accounts.map(x=>x&&typeof x.name==='string'?x.name:'').filter(Boolean),kinds};
+ }
+ async function readLevel(fetchFn,app){
+  if(!app.level)return null;
+  try{const r=await fetchFn(app.level,levelOpts('GET'));return r.ok?levelOf(await r.json()):null;}catch{return null;}
+ }
+ // Sets one of the app's levels ({mail} or {calendar}) in that app, then answers what the app now keeps.
+ async function setLevel(fetchFn,app,kind,level){
+  const r=await fetchFn(app.level,levelOpts('POST',{[kind]:level}));
+  let d=null;try{d=await r.json();}catch{d=null;}
+  const out=r.ok?levelOf(d):null;
+  if(!out){const e=new Error((d&&d.error&&d.error.code)||'request_failed');e.status=r.status;throw e;}
+  return out;
+ }
  // Every account app at once. reachable=false: the Agent Service could not be asked from this page.
  async function load(fetchFn){
-  const rows=await Promise.all(APPS.map(async app=>({...app,...await readApp(fetchFn,app.id)})));
+  const rows=await Promise.all(APPS.map(async app=>{
+   const [ticks,level]=await Promise.all([readApp(fetchFn,app.id),readLevel(fetchFn,app)]);
+   return {...app,...ticks,own_level:level};
+  }));
   const reachable=rows.some(x=>x.state!=='unavailable');
-  return {reachable,apps:rows.filter(x=>x.state==='ok'||(x.id==='connected-accounts'))};
+  return {reachable,apps:rows.filter(x=>x.state==='ok'||x.id==='connected-accounts'||x.own_level)};
  }
  // Sets exactly which agents may use one app (the owner's tick), then answers the app's ticks as now stored.
  async function setAgents(fetchFn,id,ids){
@@ -53,6 +81,6 @@
  }
  // The ids to PUT when the owner turns one agent on or off for an app.
  function toggled(agents,id,on){return agents.filter(a=>a.id===id?on:a.enabled).map(a=>a.id);}
- const api={APPS,load,setAgents,toggled,readApp};
+ const api={APPS,load,setAgents,toggled,readApp,readLevel,setLevel};
  if(typeof module==='object'&&module.exports)module.exports=api;else root.WizConnections=api;
 })(typeof window==='undefined'?globalThis:window);

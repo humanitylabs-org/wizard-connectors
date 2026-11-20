@@ -14,7 +14,8 @@ which agents may use it. Changes go to the place that already keeps them. Connec
 | Google accounts connected here | this app's Google broker | `/api/state` (as before) |
 | Which agents may use an app (the agent.json ticks) | the Agent Service, enforced by its MCP gateway (wizard-os `spec/AGENTS.md` section 5, `spec/PERMISSIONS.md`) | the page calls the Agent Service owner routes `GET` / `PUT /wizard/v1/apps/<app id>/agents` (`{agents: [ids]}` = exactly the agents ticked), the same routes the App Manager's Connections page uses |
 | What agents may do with Mail through this app (No access / Read-only / Draft only) | this app (`mail_access.py`, `DATA_DIR/mail-access.json`) | `/api/mail/access` (as before) |
-| Another app's own agent level (Messenger, Google, Microsoft) | that app, which enforces it | not yet: the panel says "set in <app> for now" (follow-ups below) |
+| Google's accounts (names only) and its agent level for mail and calendar (one level for every agent) | the Google app (`agent_access.py`), which enforces it | the page calls the Google app's owner route `GET` / `POST /wizard-google/api/panel/agent-access` (header `X-Wizard-Agent-Access: 1`, same origin), behind the Google app's switch `agent-access-panel` (wizard-google#30). Off, or an older Google app: "set in Google for now" |
+| Another app's own agent level (Messenger, Microsoft) | that app, which enforces it | not yet: the panel says "set in <app> for now" (follow-ups below) |
 
 App-to-app grants stay with the App Manager (`wizard-grants.json`); this panel does not show or change them.
 
@@ -34,6 +35,7 @@ level, and says the ticks are set in App Manager > Connections. Nothing is guess
 ## Follow-ups
 
 - humanitylabs-org/wizard-ux#1668: a bounded shell service so the panel works under the browser boundary.
-- humanitylabs-org/wizard-messenger#342, humanitylabs-org/wizard-google#30, humanitylabs-org/wizard-microsoft#10:
+- humanitylabs-org/wizard-google#30: done (Google's level, above).
+- humanitylabs-org/wizard-messenger#342, humanitylabs-org/wizard-microsoft#10:
   let the panel read and set each app's own agent level, still stored and enforced by that app.
 - Enforcing anything new, and folding the connector repos together, are out of this slice.
