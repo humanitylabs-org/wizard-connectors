@@ -1,10 +1,10 @@
-# Connected accounts (next)
+# Connected accounts 0.8.1
 
 - **Agent access in one place, reworked** (wizard-connectors#49; switch `grants-panel`, off by default). Following Miguel's rescope, the grants store from 0.8.0 is gone: no `wizard.app-grants/1`, no `/service/grants/v1/*` or `/api/grants*` routes, no audit log. Connected accounts > Agent access is now one screen over the existing owners: each installed account app with a switch per agent for "may use this app" (the agent.json ticks, read and set through the Agent Service's `GET/PUT /wizard/v1/apps/<app>/agents`), and Mail's level from this app. Other apps' own levels stay in those apps for now. See [CONNECTIONS_PANEL.md](CONNECTIONS_PANEL.md).
 
 # Connected accounts 0.8.0
 
-- **Agent access in one place** (wizard-connectors#49; switch `grants-panel`, off by default; withdrawn in the next version, see above). Connected accounts > Agent access lists every connected account with what each agent may do on it (No access, Read, Draft, Send) as taps; only the owner's taps change it, and a new agent starts with no access (Messenger accounts suggest Draft only). Apps and the MCP gateway ask `POST /service/grants/v1/check` (contract `wizard.app-grants/1`) and every yes or no is logged under Recent checks. Other connector apps can list their accounts here. Enforcing it in each app comes next. See [APP_GRANTS.md](APP_GRANTS.md).
+- **Agent access in one place** (wizard-connectors#49; switch `grants-panel`, off by default; withdrawn in 0.8.1, see above). Connected accounts > Agent access lists every connected account with what each agent may do on it (No access, Read, Draft, Send) as taps; only the owner's taps change it, and a new agent starts with no access (Messenger accounts suggest Draft only). Apps and the MCP gateway ask `POST /service/grants/v1/check` (contract `wizard.app-grants/1`) and every yes or no is logged under Recent checks. Other connector apps can list their accounts here. Enforcing it in each app comes next. See [APP_GRANTS.md](APP_GRANTS.md).
 
 # Connected accounts 0.7.1
 
