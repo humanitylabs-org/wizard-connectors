@@ -10,7 +10,7 @@
  const APPS=[
   {id:'connected-accounts',name:'Connected accounts',holds:'Google accounts connected here',own:'here'},
   {id:'wizard-google',name:'Google',holds:'Google accounts signed in to the Google app',own:'Google',appLevel:'/wizard-google/api/panel/agent-access'},
-  {id:'wizard-microsoft',name:'Microsoft',holds:'Microsoft accounts',own:'Microsoft'},
+  {id:'wizard-microsoft',name:'Microsoft',holds:'Microsoft accounts',own:'Microsoft',appLevel:'/wizard-microsoft/api/panel/agent-access'},
   {id:'messenger',name:'Messenger',holds:'WhatsApp, Signal and other chat accounts',own:'Messenger',recommended:'Draft-only',levels:'/messenger/api/agent-levels'},
   {id:'wizard-mail',name:'Mail',holds:'Mail accounts',own:'Mail'},
   {id:'money',name:'Finances',holds:'Bank accounts',own:'Finances'},
@@ -67,7 +67,8 @@
   return out;
  }
  // An app's own level for mail and calendar, one for every agent (wizard-google#30: the Google app's owner route
- // GET/POST /wizard-google/api/panel/agent-access, behind its switch agent-access-panel). The app keeps and enforces
+ // GET/POST /wizard-google/api/panel/agent-access, behind its switch agent-access-panel; wizard-microsoft#10: the same
+ // route in the Microsoft app, /wizard-microsoft/api/panel/agent-access, behind its switch agent-access-panel). The app keeps and enforces
  // it; nothing is copied here. null: the app does not offer it (switch off, older app, browser boundary).
  const appLevelOpts=(method,body)=>{const o=opts(method,body);o.headers['X-Wizard-Agent-Access']='1';return o;};
  function appLevelOf(value){

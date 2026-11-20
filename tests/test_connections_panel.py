@@ -177,6 +177,25 @@ class GoogleLevelScriptTests(unittest.TestCase):
         self.assertEqual(out['down'], [False, ['connected-accounts:unavailable:false', 'wizard-google:unavailable:true']])
 
 
+MS_LEVEL_CHECK = LEVEL_CHECK.replace('wizard-google', 'wizard-microsoft').replace('me@example.com', 'me@outlook.com')
+
+
+@unittest.skipUnless(shutil.which('node'), 'node not installed')
+class MicrosoftLevelScriptTests(unittest.TestCase):
+    def test_reads_and_sets_microsofts_own_level_in_microsoft(self):
+        # wizard-microsoft#10: Microsoft's accounts (names only) and its agent level, read from and set in Microsoft.
+        run = subprocess.run(['node', '-e', MS_LEVEL_CHECK, str(ROOT / 'web/connections.js')], capture_output=True, text=True, timeout=30)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        out = json.loads(run.stdout)
+        self.assertEqual(out['google'], ['ok', ['me@outlook.com', 'work@example.com'], ['mail:draft_only', 'calendar:suggest_only']])
+        self.assertEqual(out['set'], ['mail:draft_only', 'calendar:can_edit'])
+        self.assertEqual(out['kept'], {'mail': 'draft_only', 'calendar': 'can_edit'})
+        self.assertEqual(out['bad'], 'invalid_level')
+        self.assertEqual(out['posts'][0], ['/wizard-microsoft/api/panel/agent-access', '1', '{"calendar":"can_edit"}'])
+        self.assertEqual(out['off'], [['ok', None]])
+        self.assertEqual(out['down'], [False, ['connected-accounts:unavailable:false', 'wizard-microsoft:unavailable:true']])
+
+
 @unittest.skipUnless(shutil.which('node'), 'node not installed')
 class ConnectionsScriptTests(unittest.TestCase):
     def test_reads_and_sets_the_agent_service_ticks(self):
@@ -226,7 +245,7 @@ class ConnectionsScriptTests(unittest.TestCase):
 def load_tests(loader, tests, pattern):
     # Only this file's own tests: the BrokerHTTPTests base would otherwise run every one of its tests again here.
     suite = unittest.TestSuite()
-    for case in (ConnectionsPanelTests, ConnectionsScriptTests, GoogleLevelScriptTests):
+    for case in (ConnectionsPanelTests, ConnectionsScriptTests, GoogleLevelScriptTests, MicrosoftLevelScriptTests):
         for name in loader.getTestCaseNames(case):
             if name in case.__dict__:
                 suite.addTest(case(name))
