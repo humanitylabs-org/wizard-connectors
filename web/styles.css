@@ -89,4 +89,4 @@ html[data-skin="signal"] summary, html[data-skin="signal"] .google-progress { fo
 .grants-row > small { flex-basis:100%; }
 .grants-levels { display:flex; flex-wrap:wrap; gap:6px; }
 .grants-level { min-height:40px; padding:8px 12px; }
-.grants-audit { margin:4px 0; font-size:13px; overflow-wrap:anywhere; }
+.grants-audit { margin:4px 0; overflow-wrap:anywhere; }

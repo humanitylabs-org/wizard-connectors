@@ -131,7 +131,7 @@ function renderGrants(){
  form.onsubmit=async e=>{e.preventDefault();try{grants=await api('grants/agents',{agent:i.value});render();}catch{dialog('Could not add agent','Use letters, numbers, - or _.');}};
  const log=disclosure('Recent checks',list);
  if(!grantsAudit.length)log.append(element('p','No app has asked yet.'));
- for(const x of grantsAudit.slice(0,30))log.append(element('p',new Date(x.at*1000).toLocaleString()+' · '+x.by+' asked: may '+x.agent+' '+x.action+' on '+(grants.accounts.find(y=>y.id===x.account)?.label||x.account)+'? '+(x.allowed?'Allowed':'Refused ('+x.reason.replace('_',' ')+')'),'grants-audit'));
+ for(const x of grantsAudit.slice(0,30))log.append(element('small',new Date(x.at*1000).toLocaleString()+' · '+x.by+' asked: may '+x.agent+' '+x.action+' on '+(grants.accounts.find(y=>y.id===x.account)?.label||x.account)+'? '+(x.allowed?'Allowed':'Refused ('+x.reason.replace('_',' ')+')'),'grants-audit'));
 }
 $('grants-row').onclick=async()=>{try{await loadGrants();}catch{dialog('Could not load agent access','Try again in a moment.');return;}navigate('grants');};
 async function accountAction(path,data){try{await api(path,data);await refresh();}catch(e){dialog('Could not update account','Try again in a moment. If this keeps happening, sign in again.');}}
