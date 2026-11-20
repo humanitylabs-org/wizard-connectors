@@ -1,3 +1,7 @@
+# Connected accounts 0.7.0
+
+- **Mail opens photos and files from Gmail** (humanitylabs-org/wizard-mail#32; fix, on for everyone). `mail_get` names each attachment's part and Content-ID, and the new owner-only `mail_attachment` gives Mail one file's bytes (up to 25 MB), so Mail shows photos in emails and saves attachments. Agents never get file bytes. Contract `wizard.mail-calendar/1` 1.6; see [MAIL_API.md](MAIL_API.md).
+
 # Connected accounts 0.6.1
 
 - **Gmail for Mail on a Google app set up by hand** (wizard-connectors#38; fix, on for everyone). The agent's `--step api` turns on missing Google APIs (Gmail for Mail) without agreements recorded in Connected accounts, opens the configured app's own project by its number instead of looking for a project named "Wizard", and can fetch the setup scripts from this app when the host copy of the skill has none. A Google terms screen still stops for the owner.
