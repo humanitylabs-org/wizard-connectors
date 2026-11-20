@@ -16,7 +16,7 @@ which agents may use it. Changes go to the place that already keeps them. Connec
 | What agents may do with Mail through this app (No access / Read-only / Draft only) | this app (`mail_access.py`, `DATA_DIR/mail-access.json`) | `/api/mail/access` (as before) |
 | Messenger's chat accounts (names only) and its per-agent level (No access / Read-only / Draft-only) | Messenger (`wizard_agents.py`, the same row as Messenger's Settings > Agents), which enforces it | the page calls Messenger's owner route `GET` / `POST /messenger/api/agent-levels` (`{agent, level}`, header `X-Wizard-Agent-Level: 1`), only while Messenger's switch `connected-accounts-levels` is on (wizard-messenger#342); otherwise (404) the card says "set in Messenger for now" |
 | Google's accounts (names only) and its agent level for mail and for calendar (one level for every agent) | the Google app (`agent_access.py`), which enforces it | the page calls the Google app's owner route `GET` / `POST /wizard-google/api/panel/agent-access` (`{mail}` or `{calendar}`, header `X-Wizard-Agent-Access: 1`, same origin), only while the Google app's switch `agent-access-panel` is on (wizard-google#30, Google 0.5.1); otherwise the card says "set in Google for now" |
-| Another app's own agent level (Microsoft) | that app, which enforces it | not yet: the panel says "set in <app> for now" (follow-ups below) |
+| Microsoft's accounts (names only) and its agent level for mail and for calendar (one level for every agent) | the Microsoft app (`agent_access.py`), which enforces it | the same shape as Google's: the Microsoft app's owner route `GET` / `POST /wizard-microsoft/api/panel/agent-access` (`{mail}` or `{calendar}`, header `X-Wizard-Agent-Access: 1`, same origin), only while the Microsoft app's switch `agent-access-panel` is on (wizard-microsoft#10, Microsoft 0.4.1); otherwise the card says "set in Microsoft for now" |
 
 App-to-app grants stay with the App Manager (`wizard-grants.json`); this panel does not show or change them.
 
@@ -36,6 +36,6 @@ level, and says the ticks are set in App Manager > Connections. Nothing is guess
 ## Follow-ups
 
 - humanitylabs-org/wizard-ux#1668: a bounded shell service so the panel works under the browser boundary.
-- humanitylabs-org/wizard-microsoft#10: let the panel read and set the app's own agent level, still stored and
-  enforced by that app (Messenger's is done: wizard-messenger#342; Google's: wizard-google#30).
+- Done: each app's own agent level, still stored and enforced by that app (Messenger: wizard-messenger#342; Google:
+  wizard-google#30; Microsoft: wizard-microsoft#10).
 - Enforcing anything new, and folding the connector repos together, are out of this slice.
