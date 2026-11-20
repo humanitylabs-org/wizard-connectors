@@ -176,7 +176,12 @@ class Store:
     def __init__(self, directory, key):
         self.root = Path(directory)
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(self.root, 0o700)
+        try: os.chmod(self.root, 0o700)
+        except PermissionError:
+            # Rootless Docker (#45): the volume belongs to the host user, which is container root, so uid 1000 cannot
+            # chmod it. Runtipi opens app data to the app (a+rwx) and only this service mounts it; the snapshot itself
+            # stays 0600 and encrypted, so a writable directory is enough.
+            if not os.access(self.root, os.W_OK | os.X_OK): raise RuntimeError('credential_store_not_writable') from None
         self.path = self.root / 'google.enc'
         self.cipher = Fernet(key.encode()) if key else None
         if self.path.exists() and not self.cipher: raise RuntimeError('credential_key_required')
