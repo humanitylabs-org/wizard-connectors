@@ -1,3 +1,7 @@
+# Connected accounts 0.8.6
+
+- **Agent access on for everyone** (humanitylabs-org/wizard-connectors#49, approved at show-and-tell). The `grants-panel` switch is gone: the Agent access row always shows on the main screen, and any saved value for the switch is cleared at startup.
+
 # Connected accounts 0.8.5
 
 - **Agent access row hidden while its switch is off** (humanitylabs-org/wizard-connectors#66). With `grants-panel` off (the default), the "Agent access" row no longer shows on the main screen; before, it showed anyway and opened an empty page.

@@ -10,8 +10,8 @@
     "network"
   ],
   "description": "Owner-managed Google app, account permissions, read-only Calendar source and simulated private chat.",
-  "tipi_version": 19,
-  "version": "0.8.5",
+  "tipi_version": 20,
+  "version": "0.8.6",
   "source": "https://github.com/humanitylabs-org/wizard-connectors",
   "exposable": false,
   "supported_architectures": [
@@ -19,7 +19,7 @@
     "arm64"
   ],
   "created_at": 1791500000000,
-  "updated_at": 1795317296561,
+  "updated_at": 1795364272223,
   "dynamic_config": true,
   "min_tipi_version": "4.8.0",
   "uid": 1000,
