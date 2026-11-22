@@ -1,6 +1,6 @@
 # Agent access in one place (Connections panel)
 
-Status: behind the app switch `grants-panel` (off by default). Issue: humanitylabs-org/wizard-connectors#49, as
+Status: on for everyone (the `grants-panel` switch was removed after show-and-tell). Issue: humanitylabs-org/wizard-connectors#49, as
 rescoped by Miguel on 20 Nov 2026: one screen for every connected account and what agents may do with it, with
 **no second source of truth**.
 

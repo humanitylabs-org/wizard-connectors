@@ -137,8 +137,8 @@ MAIL_STATUS = {'invalid_arguments': 400, 'not_found': 404, 'rate_limited': 429, 
 
 # One Connections panel (wizard-connectors#49, Miguel's rescope 20 Nov 2026): every connected account and which agents
 # may use each app, read and set by the page from their existing owners (the Agent Service's agent.json ticks, each
-# app's own agent level). This app stores no grants of its own. Off by default. docs/CONNECTIONS_PANEL.md.
-GRANTS_SWITCH = 'grants-panel'
+# app's own agent level). This app stores no grants of its own. On for everyone (its grants-panel switch was removed
+# after show-and-tell). docs/CONNECTIONS_PANEL.md.
 
 
 def mail_error(code, message=None):
@@ -369,8 +369,7 @@ class Handler(BaseHTTPRequestHandler):
                     "threads":[{"id":k,"title":v["title"],"count":len(v["messages"])} for k,v in THREADS.items()],
                     "mail":{"on":switch_on(MAIL_SWITCH),"scope":"https://www.googleapis.com/auth/gmail.modify","agent_access":mail_access.view()},
                     "workspace":{"on":switch_on(WORKSPACE_SWITCH),"scopes":["https://www.googleapis.com/auth/drive.readonly","https://www.googleapis.com/auth/contacts.readonly"]},
-                    "calendar_edits":{"on":switch_on(CALENDAR_EDIT_SWITCH),"scope":CALENDAR_EDIT_SCOPE},
-                    "grants_panel":{"on":switch_on(GRANTS_SWITCH)}})
+                    "calendar_edits":{"on":switch_on(CALENDAR_EDIT_SWITCH),"scope":CALENDAR_EDIT_SCOPE}})
             if path.startswith("/api/conversations/"):
                 return self.send(200, snapshot(path.rsplit("/",1)[1]))
             if path.startswith("/api/results/"):
@@ -589,11 +588,6 @@ SWITCHES = [
                     'connected here, with no sign-in in the Google app. Each account gets an Allow for Calendar edits. '
                     'What agents may do stays your choice in Calendar > Settings > Agent access.',
      'default': False, 'issues': ['humanitylabs-org/wizard-connectors#29']},
-    {'id': 'grants-panel', 'name': 'Agent access in one place',
-     'description': 'One Agent access screen for every connected account: which agents may use each account app, '
-                    'and the app\'s own agent level where it can be set from here. Each change goes to the app that '
-                    'already keeps it (your agents\' app ticks, Mail\'s level); nothing is stored twice.',
-     'default': False, 'issues': ['humanitylabs-org/wizard-connectors#49']},
 ]
 _SW_CONTRACT = 'wizard.app-switches/1'
 _SW_ROUTE = _sw_re.compile(r'(?:/[a-z0-9][a-z0-9-]{0,62})?/api/switches/?')
@@ -611,6 +605,24 @@ def _sw_saved():
     except (OSError, ValueError):
         return {}
     return saved if isinstance(saved, dict) else {}
+
+
+# Switches removed after show-and-tell (now always on). Their saved values are dropped from switches.json.
+_SW_RETIRED = ('grants-panel',)
+
+
+def _sw_prune_retired():
+    try:
+        f = _sw_file()
+        saved = _sw_json.loads(f.read_text())
+        if not isinstance(saved, dict) or not any(k in saved for k in _SW_RETIRED):
+            return
+        with _sw_lock:
+            tmp = f.with_name(f.name + '.tmp')
+            tmp.write_text(_sw_json.dumps({k: v for k, v in saved.items() if k not in _SW_RETIRED}))
+            _sw_os.replace(tmp, f)
+    except (OSError, ValueError):
+        pass
 
 
 def switches_doc():
@@ -728,4 +740,5 @@ wizard_switches_install(Handler)
 if __name__ == "__main__":
     if not OWNER or OWNER == MCP:
         raise SystemExit("Configure distinct human and MCP authentication; startup refused")
+    _sw_prune_retired()
     ThreadingHTTPServer((os.environ.get("BIND_HOST","127.0.0.1"),int(os.environ.get("PORT","8799"))),Handler).serve_forever()

@@ -1,5 +1,5 @@
 "use strict";
-// Agent access in one place (switch grants-panel, wizard-connectors#49, Miguel's rescope 20 Nov 2026).
+// Agent access in one place (wizard-connectors#49, Miguel's rescope 20 Nov 2026).
 // This screen stores nothing itself. Which agents may use an app is the owner's agent.json ticks, kept by the
 // Agent Service (wizard-os spec/AGENTS.md section 5, PERMISSIONS.md): read with GET and set with PUT
 // /wizard/v1/apps/<app id>/agents, the same owner routes the App Manager's Connections page uses. An app's own finer

@@ -1,4 +1,4 @@
-"""Agent access in one place (wizard-connectors#49, switch grants-panel), as rescoped by Miguel on 20 Nov 2026.
+"""Agent access in one place (wizard-connectors#49; its grants-panel switch removed after show-and-tell), as rescoped by Miguel on 20 Nov 2026.
 
 The panel stores no grants: it reads and sets the Agent Service's agent.json ticks (GET/PUT
 /wizard/v1/apps/<app>/agents) from the page, and Mail's level stays this app's own. Real handlers with a fake Google;
@@ -24,20 +24,18 @@ class ConnectionsPanelTests(BrokerHTTPTests):
         super().setUp()
         Path(os.environ['DATA_DIR']).mkdir(parents=True, exist_ok=True)
 
-    def switch(self, on):
-        (Path(os.environ['DATA_DIR']) / 'switches.json').write_text(json.dumps({'grants-panel': on}))
-
-    def test_switch_off_by_default_and_linked(self):
-        self.assertFalse(self.req('/api/state')[1]['grants_panel']['on'])
+    def test_switch_removed_and_stored_value_cleared(self):
+        # Approved at show-and-tell: Agent access is on for everyone, no grants-panel switch left.
         import server
-        sw = next(s for s in server.SWITCHES if s['id'] == 'grants-panel')
-        self.assertFalse(sw['default'])
-        self.assertEqual(sw['issues'], ['humanitylabs-org/wizard-connectors#49'])
-        self.switch(True)
-        self.assertTrue(self.req('/api/state')[1]['grants_panel']['on'])
+        self.assertNotIn('grants-panel', [s['id'] for s in server.SWITCHES])
+        self.assertNotIn('grants_panel', self.req('/api/state')[1])
+        f = Path(os.environ['DATA_DIR']) / 'switches.json'
+        f.write_text(json.dumps({'grants-panel': False, 'gmail-for-mail': True}))
+        self.assertNotIn('grants-panel', [s['id'] for s in server.switches_doc()['switches']])
+        server._sw_prune_retired()
+        self.assertEqual(json.loads(f.read_text()), {'gmail-for-mail': True})
 
     def test_no_second_grants_store(self):
-        self.switch(True)
         self.assertFalse((ROOT / 'app/agent_grants.py').exists())
         self.assertNotEqual(self.req('/api/grants')[0], 200)
         self.assertNotEqual(self.req('/api/grants', {'account': 'x', 'agent': 'main', 'level': 'read'})[0], 200)
