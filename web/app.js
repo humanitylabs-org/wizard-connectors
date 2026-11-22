@@ -89,9 +89,9 @@ function renderRootGoogle(){
  $('google-summary').textContent=!g.client_configured?'Google app not set up':n?account+' · Calendar '+(calendarOn?'on':'off'):'Not connected';
 }
 async function refresh(){state=await api('state');$('unlock').hidden=true;$('workspace').hidden=false;renderRootGoogle();if(view==='grants')await loadConnections();render();}
-function render(){detail.replaceChildren();document.body.dataset.view=view;if(!state)return;renderRootGoogle();$('grants-row').hidden=!state.grants_panel?.on;if(view==='grants'&&!state.grants_panel?.on)view='root';if(view==='root')return;
+function render(){detail.replaceChildren();document.body.dataset.view=view;if(!state)return;renderRootGoogle();if(view==='root')return;
 button('← Back',back);if(view==='google')return renderGoogle();if(view==='grants')return renderConnections();}
-// Agent access in one place (switch grants-panel, wizard-connectors#49): every connected account and which agents may
+// Agent access in one place (wizard-connectors#49): every connected account and which agents may
 // use each account app. Nothing is stored here: the ticks are read from and written to the Agent Service (agent.json),
 // and an app's own agent level stays in that app (Mail's level here is this app's own). docs/CONNECTIONS_PANEL.md.
 let connections=null,connectionsPending='';
