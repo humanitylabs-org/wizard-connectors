@@ -84,5 +84,8 @@ a { color:var(--wz-accent,var(--accent)); }
 html[data-skin="signal"] button, html[data-skin="signal"] .google-continue, html[data-skin="signal"] input, html[data-skin="signal"] textarea, html[data-skin="signal"] dialog { border-radius:var(--wz-radius,var(--r)); }
 html[data-skin="signal"] summary, html[data-skin="signal"] .google-progress { font-family:ui-monospace,monospace; }
 /* Agent access (switch grants-panel, wizard-connectors#49). */
+/* The kit's .wz-row { display:flex } beats the browser's [hidden] rule, so a row
+   gated off by a switch (e.g. #grants-row) stayed visible (wizard-connectors#66). */
+[hidden] { display:none !important; }
 #grants-row { margin-top:12px; }
 .grants-list .google-account > small { display:block; margin-top:10px; }
