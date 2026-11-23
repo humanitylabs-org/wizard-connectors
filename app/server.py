@@ -433,7 +433,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200,{"ok":True}, cookie=f"connectors_session={sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=3600{secure}")
         if path == "/mcp":
             token = self.headers.get("Authorization", "").removeprefix("Bearer ")
-            if not MCP or not hmac.compare_digest(token, MCP):
+            bearer = bool(MCP) and hmac.compare_digest(token, MCP)
+            # The Agent Service gateway sends only X-Wizard-Grant, checked against the
+            # App Manager's host:agent-service row in grants.json (wizard-os#774).
+            if not bearer and not (self.headers.get("X-Wizard-Grant") and app_caller(self.headers, 'host:agent-service')):
                 return self.send(401,{"error":"mcp_auth_required"})
             return self.mcp(data)
         if path == '/service/music/catalog':
