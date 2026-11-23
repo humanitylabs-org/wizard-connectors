@@ -1,3 +1,7 @@
+# Connected accounts 0.8.7
+
+- **The agent can use Connected accounts tools again** (humanitylabs-org/wizard-os#774). The Agent Service gateway now reaches `/mcp` with its grant key (the App Manager's `host:agent-service` row), and that row no longer makes the grants file invalid, so Calendar, Mail and Google grants keep working.
+
 # Connected accounts 0.8.6
 
 - **Agent access on for everyone** (humanitylabs-org/wizard-connectors#49, approved at show-and-tell). The `grants-panel` switch is gone: the Agent access row always shows on the main screen, and any saved value for the switch is cleared at startup.
