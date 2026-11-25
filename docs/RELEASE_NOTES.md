@@ -1,3 +1,7 @@
+# Connected accounts 0.9.0
+
+- **Calendar edits for your wizard on for everyone** (humanitylabs-org/wizard-connectors#29, approved at show-and-tell). The `google-calendar-edits` switch is gone: each Google account always shows the Calendar edits row, and the Google app's calendar tools add, move and delete events through the account that allowed it, with no switch. Calendar > Settings > Agent access still decides what agents may do. Any saved value for the switch is cleared at startup. Connected accounts now has no feature switches.
+
 # Connected accounts 0.8.9
 
 - **Google tools for your wizard on for everyone** (humanitylabs-org/wizard-connectors#27, approved at show-and-tell). The `google-workspace` switch is gone: the agent (and the Google app) can list Drive files, read Docs and Sheets, look up contacts and write Gmail drafts through the Google account connected here with no switch, and each Google account always shows the Drive and Contacts row. Any saved value for the switch is cleared at startup.
