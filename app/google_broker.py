@@ -31,7 +31,7 @@ GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
 DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
 CONTACTS_SCOPE = 'https://www.googleapis.com/auth/contacts.readonly'
 WORKSPACE_SCOPES = {'drive': DRIVE_SCOPE, 'contacts': CONTACTS_SCOPE}
-# Calendar edits for the agent through the Google app (wizard-connectors#29, switch google-calendar-edits): events only,
+# Calendar edits for the agent through the Google app (wizard-connectors#29, on for everyone): events only,
 # asked per account on the owner's Allow. Who may edit is Calendar > Settings > Agent access, kept by the Google app.
 CALENDAR_EDIT_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
 SCOPES = IDENTITY | {YOUTUBE, CALENDAR, GMAIL_SCOPE, DRIVE_SCOPE, CONTACTS_SCOPE, CALENDAR_EDIT_SCOPE}
@@ -767,7 +767,7 @@ class Broker:
             raise
         return {'source': 'google', 'via': 'connected-accounts', 'account': email, **result}
 
-    # ---------- Calendar edits for the agent through the Google app (wizard-connectors#29, switch google-calendar-edits) ----------
+    # ---------- Calendar edits for the agent through the Google app (wizard-connectors#29, on for everyone) ----------
     def calendar_edit_status(self):
         """Accounts and whether each allowed Calendar edits. No events, no tokens."""
         with self.lock:

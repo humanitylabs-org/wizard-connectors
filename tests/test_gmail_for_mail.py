@@ -78,13 +78,13 @@ class GmailForMailTests(BrokerHTTPTests):
         import server
         self.assertNotIn('gmail-for-mail', [s['id'] for s in server.SWITCHES])
         f = Path(os.environ['DATA_DIR']) / 'switches.json'
-        f.write_text(json.dumps({'gmail-for-mail': False, 'google-calendar-edits': False}))
+        f.write_text(json.dumps({'gmail-for-mail': False, 'future-switch': False}))
         self.assertNotIn('on', self.req('/api/state')[1]['mail'])
         code, body, _ = self.mail('status')
         self.assertEqual(code, 200, body)
         self.assertEqual(self.req('/api/mail/access', {'level': 'read_only'})[1]['level'], 'read_only')
         server._sw_prune_retired()
-        self.assertEqual(json.loads(f.read_text()), {'google-calendar-edits': False})
+        self.assertEqual(json.loads(f.read_text()), {'future-switch': False})
         self.connect_gmail()  # Allow for Mail works with no switch
         # Calendar's plain Connect still never asks Google for Gmail.
         self.assertNotIn(GMAIL_SCOPE, self.start(False)['scope'])

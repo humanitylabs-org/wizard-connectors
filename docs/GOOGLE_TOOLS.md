@@ -51,11 +51,12 @@ declares `uses: [connected-accounts]`).
 - Errors: `{error: {code, message}}` with the codes above and HTTP status 400/403/404/409/413/429.
 - Nothing is disconnected or revoked: the Google app's own sign-ins stay as they are.
 
-## Calendar edits through the Google app (switch `google-calendar-edits`, off by default; wizard-connectors#29)
+## Calendar edits through the Google app (on for everyone; wizard-connectors#29)
 
-With this switch on, the Google app's agent tools `calendar_list_events`, `calendar_create_event`,
+The Google app's agent tools `calendar_list_events`, `calendar_create_event`,
 `calendar_update_event`, `calendar_delete_event` and `calendar_respond` run on the Google account connected here when
-the Google app has no Google sign-in of its own for that calendar. Tracker Try it: `connected-accounts:google-calendar-edits`.
+the Google app has no Google sign-in of its own for that calendar.
+This was behind the switch `google-calendar-edits` until show-and-tell said yes; a saved value for it is dropped at startup.
 
 - **Owner side:** each Google account card gets a **Calendar edits** row. **Allow** opens Google's screen once and
   adds `https://www.googleapis.com/auth/calendar.events` (events only, not calendar sharing or settings) to the

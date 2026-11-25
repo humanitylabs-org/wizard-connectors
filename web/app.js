@@ -340,13 +340,11 @@ function renderGoogleAccounts(g){
   const tools=googleUseRow(card,'Drive and Contacts');
   if(!workspaceScope)button('Allow',()=>authorize(a.id,youtubeScope,calendarScope,false,true),tools).setAttribute('aria-label','Allow Drive and Contacts');
   else tools.append(element('small','On'));
-  // Calendar edits for your wizard (switch google-calendar-edits, wizard-connectors#29): the Google app's calendar tools
+  // Calendar edits for your wizard (wizard-connectors#29, on for everyone): the Google app's calendar tools
   // add, move and delete events on this account. What agents may do stays Calendar > Settings > Agent access.
-  if(state.calendar_edits?.on){
-   const edits=googleUseRow(card,'Calendar edits');
-   if(!a.scopes.includes(CALENDAR_EDIT_SCOPE))button('Allow',()=>authorize(a.id,youtubeScope,calendarScope,false,false,true),edits).setAttribute('aria-label','Allow Calendar edits');
-   else edits.append(element('small','On'));
-  }
+  const edits=googleUseRow(card,'Calendar edits');
+  if(!a.scopes.includes(CALENDAR_EDIT_SCOPE))button('Allow',()=>authorize(a.id,youtubeScope,calendarScope,false,false,true),edits).setAttribute('aria-label','Allow Calendar edits');
+  else edits.append(element('small','On'));
   const musicBound=g.bindings.some(b=>b.account===a.id);
   if(youtubeScope){
    const music=googleUseRow(card,'Music');

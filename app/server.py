@@ -72,10 +72,8 @@ GOOGLE_APP_POST = {'drive_search': 'google_drive_search', 'drive_read': 'google_
                    'mail_get': 'google_mail_read', 'mail_draft': 'google_mail_draft'}
 # Calendar edits for the agent through the Google app (wizard-connectors#29): the Google app's calendar_* tools run on
 # this sign-in. Calendar > Settings > Agent access stays the Google app's check (wizard-google agent_access.py).
-CALENDAR_EDIT_SWITCH = 'google-calendar-edits'
 CALENDAR_EDIT_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
 CALENDAR_EDIT_MESSAGES = {
-    'service_off': 'Calendar edits for your wizard are off in Connected accounts.',
     'not_connected': 'No Google account has allowed Calendar edits yet. Open Connected accounts and tap Allow on Calendar edits.',
     'permission_missing': 'This Google account has not allowed Calendar edits yet. Open Connected accounts and tap Allow on it.',
     'google_permission_missing': 'Google refused this calendar change (no edit rights on that calendar, or the Calendar API is off).',
@@ -283,7 +281,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.send(200, value)
 
     def google_app_calendar(self, tool, data):
-        """Calendar edits for the Google app's calendar_* tools (wizard-connectors#29, switch google-calendar-edits).
+        """Calendar edits for the Google app's calendar_* tools (wizard-connectors#29, on for everyone).
         GET calendar_status: accounts and which allowed Calendar edits. POST calendar_http {method, url, query?, body?,
         account?}: one Google Calendar events call (one calendar's events or one event; checked by the broker). The
         caller is an agent (X-Wizard-Agent) or the owner's tap (X-Wizard-Owner: 1, e.g. Approve in Calendar); the Google
@@ -293,7 +291,6 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(GOOGLE_APP_STATUS.get(code, 409), body)
         if self.headers.get('X-Wizard-Agent') is None and self.headers.get('X-Wizard-Owner') != '1':
             return fail('caller_unknown', 'Say who this is for: X-Wizard-Agent or X-Wizard-Owner.')
-        if not switch_on(CALENDAR_EDIT_SWITCH): return fail('service_off')
         try:
             if tool == 'calendar_status' and self.command == 'GET':
                 return self.send(200, broker.call('calendar_edit_status'))
@@ -361,7 +358,7 @@ class Handler(BaseHTTPRequestHandler):
                     "assurance":{"real_data_eligible":False,"host_admin_isolation":False,"network_confinement":os.environ.get('ISOLATED_PACKAGE') == 'true'},
                     "threads":[{"id":k,"title":v["title"],"count":len(v["messages"])} for k,v in THREADS.items()],
                     "mail":{"scope":"https://www.googleapis.com/auth/gmail.modify","agent_access":mail_access.view()},
-                    "calendar_edits":{"on":switch_on(CALENDAR_EDIT_SWITCH),"scope":CALENDAR_EDIT_SCOPE}})
+                    "calendar_edits":{"scope":CALENDAR_EDIT_SCOPE}})
             if path.startswith("/api/conversations/"):
                 return self.send(200, snapshot(path.rsplit("/",1)[1]))
             if path.startswith("/api/results/"):
@@ -459,7 +456,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200,mail_access.set_level(data['level']))
             if path in ('/api/google/connect','/api/google/reconnect') and set(data) <= {'account','youtube','calendar','gmail','workspace','calendar_edits'}:
                 if any(k in data and type(data[k]) is not bool for k in ('youtube','calendar','gmail','workspace','calendar_edits')): raise ValueError()
-                if data.get('calendar_edits') and not switch_on(CALENDAR_EDIT_SWITCH): return self.send(409,{'error':'service_off'})
                 if data.get('account') is not None and not isinstance(data['account'],str): raise ValueError()
                 # Reuse this browser's binding so overlapping sign-in windows all stay valid;
                 # a fresh value per tap would orphan any window opened earlier.
@@ -564,13 +560,7 @@ import threading as _sw_threading
 from pathlib import Path as _SwPath
 from urllib.parse import urlsplit as _sw_urlsplit
 
-SWITCHES = [
-    {'id': 'google-calendar-edits', 'name': 'Calendar edits for your wizard',
-     'description': 'Your wizard adds, moves and deletes events in your Google Calendar through the Google account '
-                    'connected here, with no sign-in in the Google app. Each account gets an Allow for Calendar edits. '
-                    'What agents may do stays your choice in Calendar > Settings > Agent access.',
-     'default': False, 'issues': ['humanitylabs-org/wizard-connectors#29']},
-]
+SWITCHES = []
 _SW_CONTRACT = 'wizard.app-switches/1'
 _SW_ROUTE = _sw_re.compile(r'(?:/[a-z0-9][a-z0-9-]{0,62})?/api/switches/?')
 _SW_LOCAL = {'localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0'}
@@ -590,7 +580,7 @@ def _sw_saved():
 
 
 # Switches removed after show-and-tell (now always on). Their saved values are dropped from switches.json.
-_SW_RETIRED = ('grants-panel', 'gmail-for-mail', 'google-workspace')
+_SW_RETIRED = ('grants-panel', 'gmail-for-mail', 'google-workspace', 'google-calendar-edits')
 
 
 def _sw_prune_retired():
