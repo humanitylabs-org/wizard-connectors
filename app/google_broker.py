@@ -24,7 +24,7 @@ import google_agreements as agreements
 IDENTITY = frozenset({'openid', 'email'})
 YOUTUBE = 'https://www.googleapis.com/auth/youtube.readonly'
 CALENDAR = 'https://www.googleapis.com/auth/calendar.readonly'
-# Gmail for Mail (wizard-connectors#15, switch `gmail-for-mail`): read, search, label changes and drafts. Sending
+# Gmail for Mail (wizard-connectors#15, on for everyone): read, search, label changes and drafts. Sending
 # stays the owner's tap in Mail; agents never send (mail_access.py).
 GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
 # Drive, Docs, Sheets and Contacts for the agent (wizard-connectors#27, switch `google-workspace`): read-only.

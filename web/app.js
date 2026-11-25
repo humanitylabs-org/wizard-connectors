@@ -163,7 +163,7 @@ function renderConnections(){
     t.append(element('span',undefined,'google-toggle-track'));t.onclick=()=>setAppAgent(app,agent,!agent.enabled);row.append(t);
    }
   }
-  if(app.id==='connected-accounts'){if(state.mail?.on||state.workspace?.on)renderMailAccess(card);}
+  if(app.id==='connected-accounts')renderMailAccess(card);
   else if(app.ownLevels?.state==='ok')renderAppLevels(card,app);
   else if(app.appLevelView)renderOneLevel(card,app);
   else card.append(element('small',(app.recommended?'Recommended: '+app.recommended+'. ':'')+'How much an agent may do there (for example read only or drafts only) is set in '+app.own+' for now.'));
@@ -331,13 +331,11 @@ function renderGoogleAccounts(g){
    const toggle=element('button',undefined,'google-toggle');toggle.type='button';toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Calendar for '+(a.email||'Google account'));toggle.setAttribute('aria-checked',String(allowed));toggle.disabled=calendarPending;
    toggle.append(element('span',undefined,'google-toggle-track'));toggle.onclick=()=>toggleCalendar(toggle,a,allowed);calendar.append(toggle);
   }
-  // Gmail for Mail (switch gmail-for-mail): Mail reads, searches and drafts this account's mail through this Google app.
+  // Gmail for Mail (wizard-connectors#15): Mail reads, searches and drafts this account's mail through this Google app.
   const gmailScope=a.scopes.includes(GMAIL_SCOPE),workspaceScope=WORKSPACE_SCOPES.every(x=>a.scopes.includes(x));
-  if(state.mail?.on||state.workspace?.on){
-   const mail=googleUseRow(card,'Mail');
-   if(!gmailScope)button('Allow',()=>authorize(a.id,youtubeScope,calendarScope,true),mail).setAttribute('aria-label','Allow Mail');
-   else mail.append(element('small','On'));
-  }
+  const mail=googleUseRow(card,'Mail');
+  if(!gmailScope)button('Allow',()=>authorize(a.id,youtubeScope,calendarScope,true),mail).setAttribute('aria-label','Allow Mail');
+  else mail.append(element('small','On'));
   // Google tools for your wizard (switch google-workspace, wizard-connectors#27): Drive, Docs, Sheets and Contacts, read-only.
   if(state.workspace?.on){
    const tools=googleUseRow(card,'Drive and Contacts');
@@ -376,7 +374,7 @@ function renderGoogleAccounts(g){
  const connect=button(g.accounts.length?'Add another Google account':'Connect a Google account',()=>authorize(),actions,g.accounts.length?'':'primary');connect.disabled=!!g.blocker;
  button('Check accounts',async()=>{try{await refresh();}catch{dialog('Could not check accounts','Try again in a moment. Your connected accounts have not been changed.');}},actions,'text-button');
  if(g.blocker)list.append(element('p',googleError(g.blocker),'google-status'));
- if(state.mail?.on||state.workspace?.on)renderMailAccess(list);
+ renderMailAccess(list);
  if(g.provider_revocation==='failed_manual_revocation_required'||g.provider_revocation==='pending')append('p','This account was disconnected from Wizard. Google has not confirmed that access was removed. You can remove this app in your Google account permissions.');
 }
 $('google-row').onclick=()=>{googleSetup=null;navigate('google');if(state.google.client_configured&&!state.google.accounts.length)authorize();};

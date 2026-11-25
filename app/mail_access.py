@@ -1,4 +1,4 @@
-"""The owner's level for agents' mail through Connected accounts (wizard-connectors#15, switch gmail-for-mail).
+"""The owner's level for agents' mail through Connected accounts (wizard-connectors#15).
 
 Same levels and meaning as wizard-google / wizard-microsoft `agent_access.py` (contract wizard.mail-calendar/1):
 No access, Read-only, Draft only (recommended, the default). Agents never send: `mail_send` is the owner's tap in
