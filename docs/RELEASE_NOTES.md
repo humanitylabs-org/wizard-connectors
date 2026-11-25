@@ -1,3 +1,7 @@
+# Connected accounts 0.8.8
+
+- **Gmail for Mail on for everyone** (humanitylabs-org/wizard-connectors#15, approved at show-and-tell). The `gmail-for-mail` switch is gone: Mail reads, searches and drafts Gmail through the Google account connected here with no switch, each Google account always shows the Mail row and "Agents and your mail" always shows. Any saved value for the switch is cleared at startup.
+
 # Connected accounts 0.8.7
 
 - **The agent can use Connected accounts tools again** (humanitylabs-org/wizard-os#774). The Agent Service gateway now reaches `/mcp` with its grant key (the App Manager's `host:agent-service` row), and that row no longer makes the grants file invalid, so Calendar, Mail and Google grants keep working.
