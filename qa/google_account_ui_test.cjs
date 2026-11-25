@@ -20,7 +20,7 @@ const run=s=>vm.runInContext(s,context),all=n=>[n,...n.children.flatMap(all)];
 const account={id:'test-account',email:'calendar-demo@example.invalid',status:'active',offline:true,scopes:['openid','email','https://www.googleapis.com/auth/calendar.readonly']};
 const google={client_configured:true,accounts:[account],calendar_binding:{accounts:[account.id]},bindings:[],music:{state:'unbound'},blocker:null};
 context.fixture=google;
-run("state={google:fixture};view='google';renderGoogle()");
+run("state={google:fixture,mail:{agent_access:{level:'draft_only',levels:[],what:''}}};view='google';renderGoogle()");
 let tree=all(nodes.detail);
 assert(tree.some(n=>n.className==='google-status-pill'&&n.textContent==='Connected'));
 assert(!nodes.detail.textContent.includes('needs attention'));

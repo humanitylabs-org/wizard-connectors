@@ -55,8 +55,6 @@ class GmailForMailTests(BrokerHTTPTests):
         self.b.provider = self.fake
         Path(os.environ['DATA_DIR']).mkdir(parents=True, exist_ok=True)
 
-    def switch(self, on):
-        (Path(os.environ['DATA_DIR']) / 'switches.json').write_text(json.dumps({'gmail-for-mail': on}))
 
     def connect_gmail(self):
         code, res, h = self.req('/api/google/connect', {'gmail': True})
@@ -75,23 +73,30 @@ class GmailForMailTests(BrokerHTTPTests):
             return self.req('/service/mail/v1/status', owner=False, headers=h)
         return self.req('/service/mail/v1/' + tool, data if data is not None else {}, owner=False, headers=h)
 
-    def test_off_by_default_no_gmail_scope_no_service(self):
-        self.assertFalse(self.req('/api/state')[1]['mail']['on'])
-        self.assertEqual(self.req('/api/google/connect', {'gmail': True})[1]['error'], 'service_off')
+    def test_on_for_everyone_no_switch(self):
+        # Approved at show-and-tell (#15): Gmail for Mail has no switch; an old saved "off" changes nothing.
+        import server
+        self.assertNotIn('gmail-for-mail', [s['id'] for s in server.SWITCHES])
+        f = Path(os.environ['DATA_DIR']) / 'switches.json'
+        f.write_text(json.dumps({'gmail-for-mail': False, 'google-workspace': False}))
+        self.assertNotIn('on', self.req('/api/state')[1]['mail'])
         code, body, _ = self.mail('status')
-        self.assertEqual((code, body['error']['code']), (409, 'service_off'))
-        # Off: Calendar's plain Connect never asks Google for Gmail.
+        self.assertEqual(code, 200, body)
+        self.assertEqual(self.req('/api/mail/access', {'level': 'read_only'})[1]['level'], 'read_only')
+        server._sw_prune_retired()
+        self.assertEqual(json.loads(f.read_text()), {'google-workspace': False})
+        self.connect_gmail()  # Allow for Mail works with no switch
+        # Calendar's plain Connect still never asks Google for Gmail.
         self.assertNotIn(GMAIL_SCOPE, self.start(False)['scope'])
 
     def test_grant_required_and_only_from_mail(self):
-        self.switch(True)
         self.assertEqual(self.mail('status', grant={'X-Wizard-Grant': 'WRONG'})[0], 403)
         calendar = self.grant(caller='wizard-calendar')
         self.assertEqual(self.req('/service/mail/v1/status', owner=False, headers={**calendar, 'X-Wizard-Owner': '1'})[0], 403)
         self.assertEqual(self.mail('status', who={'X-Other': '1'})[0], 400)  # neither owner nor agent named
 
     def test_owner_reads_searches_drafts_and_sends_through_connected_account(self):
-        self.switch(True); self.connect_gmail()
+        self.connect_gmail()
         code, status, _ = self.mail('status')
         self.assertEqual(code, 200)
         self.assertEqual(status['accounts'], [{'email': 'fixture@example.invalid', 'status': 'active', 'services': ['gmail'], 'via': 'own-client'}])
@@ -109,7 +114,7 @@ class GmailForMailTests(BrokerHTTPTests):
         self.assertEqual(self.mail('mail_send', {'draft_id': 'd1'})[1]['sent'], True)
 
     def test_agents_keep_the_owner_level_and_never_send(self):
-        self.switch(True); self.connect_gmail()
+        self.connect_gmail()
         agent = {'X-Wizard-Agent': 'main'}
         self.assertNotIn('mail_send', self.mail('status', who=agent)[1]['mail_calendar']['tools'])
         code, body, _ = self.mail('mail_send', {'draft_id': 'd1'}, who=agent)
@@ -124,7 +129,7 @@ class GmailForMailTests(BrokerHTTPTests):
 
     def test_owner_reads_one_attachment_agents_never_do(self):
         # wizard-mail#32 (contract 1.6): mail_get names each file's part and Content-ID; mail_attachment gives its bytes.
-        self.switch(True); self.connect_gmail()
+        self.connect_gmail()
         code, got, _ = self.mail('mail_get', {'id': 'm3'})
         self.assertEqual(code, 200, got)
         self.assertEqual(got['message']['attachments'], [
@@ -149,7 +154,7 @@ class GmailForMailTests(BrokerHTTPTests):
         self.assertEqual((code, body['error']['code']), (403, 'owner_only'))
 
     def test_account_without_gmail_and_missing_api_are_plain_errors(self):
-        self.switch(True); self.calendar_connect()
+        self.calendar_connect()
         status = self.mail('status')[1]
         self.assertEqual(status['accounts'][0]['services'], [])
         self.assertEqual(self.mail('mail_search', {'account': 'fixture@example.invalid'})[1]['error']['code'], 'permission_missing')
@@ -164,16 +169,14 @@ class GmailForMailTests(BrokerHTTPTests):
         self.assertEqual((code, body['error']['code']), (400, 'invalid_arguments'))
         self.assertIn('max', body['error']['message'])
 
-    def test_connect_from_mail_one_allow_turns_gmail_for_mail_on(self):
+    def test_connect_from_mail_one_allow(self):
         # wizard-connectors#21: the owner's tap in Mail starts Google's sign-in with the Gmail scope, no switch to find.
-        self.assertFalse(self.req('/api/state')[1]['mail']['on'])
         code, out, _ = self.mail('connect', {})
         self.assertEqual(code, 200, out)
         from urllib.parse import parse_qs, urlsplit
         self.assertTrue(out['authorization_url'].startswith('https://accounts.google.com/'))
         params = {k: v[0] for k, v in parse_qs(urlsplit(out['authorization_url']).query).items()}
         self.assertIn(GMAIL_SCOPE, params['scope'].split())
-        self.assertTrue(self.req('/api/state')[1]['mail']['on'])  # the tap turned Gmail for Mail on
         self.fake.nonce = params['nonce']; self.fake.scopes = set(params['scope'].split())
         self.cookie = ''  # finished in another window: the single-use state binds it, not a cookie
         self.assertEqual(self.finish(params)[0], 200)  # Google's Allow: the owner's only step
@@ -189,13 +192,11 @@ class GmailForMailTests(BrokerHTTPTests):
         self.assertEqual((code, body['error']['code']), (403, 'owner_only'))
         self.assertEqual(self.mail('connect', {}, who={'X-Wizard-Agent': 'main', 'X-Wizard-Owner': '1'})[0], 403)
         self.assertEqual(self.mail('connect', {'account': 'x'})[0], 400)
-        self.assertFalse(self.req('/api/state')[1]['mail']['on'])  # none of these turned anything on
 
-    def test_connect_from_mail_without_a_google_app_turns_nothing_on(self):
+    def test_connect_from_mail_without_a_google_app(self):
         del self.config['GOOGLE_CLIENT_SECRET']
         code, body, _ = self.mail('connect', {})
         self.assertEqual((code, body['error']['code']), (409, 'google_configuration_required'))
-        self.assertFalse(self.req('/api/state')[1]['mail']['on'])
 
     def test_transport_stays_on_gmail_users_me(self):
         t = GoogleTransport()

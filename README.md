@@ -6,7 +6,7 @@ Google account readiness and a real no-tool Tinfoil `glm-5-3` summary of fiction
 
 ## Gmail for Mail (off by default)
 
-Switch `gmail-for-mail` (Tracker: `connected-accounts:gmail-for-mail`) lets Mail read, search and draft Gmail through the Google account connected here: no Composio, no second Google app. See [docs/MAIL_API.md](docs/MAIL_API.md).
+Gmail for Mail lets Mail read, search and draft Gmail through the Google account connected here: no Composio, no second Google app. See [docs/MAIL_API.md](docs/MAIL_API.md).
 
 ## Boundaries
 

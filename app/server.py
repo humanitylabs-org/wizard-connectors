@@ -55,7 +55,6 @@ CALLBACK_REASONS = {
     '_': 'Something went wrong while finishing the sign-in. Tap Connect again; if it happens twice, tell your wizard.',
 }
 
-MAIL_SWITCH = 'gmail-for-mail'
 # Drive, Docs, Sheets, Contacts and mail drafts for the agent on this sign-in (wizard-connectors#27).
 WORKSPACE_SWITCH = 'google-workspace'
 WORKSPACE_MESSAGES = {
@@ -213,19 +212,16 @@ class Handler(BaseHTTPRequestHandler):
         except Denied as e: return self.send(409, {'error':str(e)})
 
     def mail_connect(self, data):
-        """Connect Gmail from inside Mail (wizard-connectors#21; Mail's switch connect-gmail-in-mail sends it).
+        """Connect Gmail from inside Mail (wizard-connectors#21; Mail's Connect Gmail sends it).
 
         Only the owner's own tap in Mail (Mail's grant + X-Wizard-Owner: 1, never an agent): starts Google's sign-in
         with the Gmail scope on the owner's own Google app and answers the Google URL for Mail to open, so Google's
-        Allow is the owner's only step. The tap is the owner asking for Gmail in Mail, so it also turns this app's
-        `gmail-for-mail` switch on (no switch for the owner to find); they can still turn it off. Nothing is turned on
-        when the Google app is not set up yet: that answers google_configuration_required, as before."""
+        Allow is the owner's only step. When the Google app is not set up yet it answers google_configuration_required."""
         if self.headers.get('X-Wizard-Agent') is not None or self.headers.get('X-Wizard-Owner') != '1':
             return self.send(403, {'error': {'code': 'owner_only', 'message': 'Only you can connect Gmail, from Mail.'}})
         if data != {}: return self.send(*mail_error('invalid_arguments', 'Send {}.'))
         try:
             value = broker.call('start', browser=secrets.token_urlsafe(32), account=None, youtube=False, calendar=False, gmail=True)
-            if not switch_on(MAIL_SWITCH): _sw_set(MAIL_SWITCH, True)
         except Denied as e:
             code, _, message = str(e).partition(':')
             return self.send(*mail_error(code, message or None))
@@ -242,7 +238,6 @@ class Handler(BaseHTTPRequestHandler):
         tool = path[len('/service/mail/v1/'):]
         if tool == 'connect' and self.command == 'POST':
             return self.mail_connect(data)
-        if not switch_on(MAIL_SWITCH): return self.send(*mail_error('service_off'))
         agent = self.headers.get('X-Wizard-Agent')
         if agent is not None:
             name = agent.strip().lower()
@@ -367,7 +362,7 @@ class Handler(BaseHTTPRequestHandler):
                     "private_route":{"model":"tinfoil/glm-5-3", "enabled":jobs.enabled, "configured":bool(model.key), "fallback":False, "tools":False},
                     "assurance":{"real_data_eligible":False,"host_admin_isolation":False,"network_confinement":os.environ.get('ISOLATED_PACKAGE') == 'true'},
                     "threads":[{"id":k,"title":v["title"],"count":len(v["messages"])} for k,v in THREADS.items()],
-                    "mail":{"on":switch_on(MAIL_SWITCH),"scope":"https://www.googleapis.com/auth/gmail.modify","agent_access":mail_access.view()},
+                    "mail":{"scope":"https://www.googleapis.com/auth/gmail.modify","agent_access":mail_access.view()},
                     "workspace":{"on":switch_on(WORKSPACE_SWITCH),"scopes":["https://www.googleapis.com/auth/drive.readonly","https://www.googleapis.com/auth/contacts.readonly"]},
                     "calendar_edits":{"on":switch_on(CALENDAR_EDIT_SWITCH),"scope":CALENDAR_EDIT_SCOPE}})
             if path.startswith("/api/conversations/"):
@@ -464,12 +459,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/google/client' and set(data) == {'client_id','client_secret','redirect_uri'}:
                 return self.send(200,broker.call('save_client',**data))
             if path == '/api/mail/access' and set(data) == {'level'}:
-                if not (switch_on(MAIL_SWITCH) or switch_on(WORKSPACE_SWITCH)): return self.send(409,{'error':'service_off'})
                 return self.send(200,mail_access.set_level(data['level']))
             if path in ('/api/google/connect','/api/google/reconnect') and set(data) <= {'account','youtube','calendar','gmail','workspace','calendar_edits'}:
                 if any(k in data and type(data[k]) is not bool for k in ('youtube','calendar','gmail','workspace','calendar_edits')): raise ValueError()
                 if data.get('calendar_edits') and not switch_on(CALENDAR_EDIT_SWITCH): return self.send(409,{'error':'service_off'})
-                if data.get('gmail') and not (switch_on(MAIL_SWITCH) or switch_on(WORKSPACE_SWITCH)): return self.send(409,{'error':'service_off'})
                 if data.get('workspace') and not switch_on(WORKSPACE_SWITCH): return self.send(409,{'error':'service_off'})
                 if data.get('account') is not None and not isinstance(data['account'],str): raise ValueError()
                 # Reuse this browser's binding so overlapping sign-in windows all stay valid;
@@ -577,10 +570,6 @@ from pathlib import Path as _SwPath
 from urllib.parse import urlsplit as _sw_urlsplit
 
 SWITCHES = [
-    {'id': 'gmail-for-mail', 'name': 'Gmail for Mail',
-     'description': 'Mail reads, searches and drafts Gmail through the Google account connected here: one Google app, '
-                    'one sign-in, no Composio. Agents keep the level you choose (Draft only by default); only you send.',
-     'default': False, 'issues': ['humanitylabs-org/wizard-connectors#15']},
     {'id': 'google-workspace', 'name': 'Google tools for your wizard',
      'description': 'Your wizard lists Drive files, reads Docs and Sheets, looks up contacts and writes Gmail drafts '
                     'through the Google account connected here: no second Google sign-in. Each account gets an Allow '
@@ -611,7 +600,7 @@ def _sw_saved():
 
 
 # Switches removed after show-and-tell (now always on). Their saved values are dropped from switches.json.
-_SW_RETIRED = ('grants-panel',)
+_SW_RETIRED = ('grants-panel', 'gmail-for-mail')
 
 
 def _sw_prune_retired():
