@@ -19,13 +19,12 @@ class GoogleAppServiceTests(GoogleWorkspaceTests):
             return self.req('/service/google/v1/status', owner=False, headers=h)
         return self.req('/service/google/v1/' + tool, data if data is not None else {}, owner=False, headers=h)
 
-    def test_only_the_google_app_and_only_while_the_switch_is_on(self):
+    def test_only_the_google_app_no_switch(self):
         self.assertEqual(self.google('status', grant={'X-Wizard-Grant': 'WRONG'})[0], 403)
         mail = self.grant(caller='wizard-mail')
         self.assertEqual(self.google('drive_search', grant=mail)[1]['error']['code'], 'google_grant_required')
         code, res, _ = self.google('drive_search')
-        self.assertEqual((code, res['error']['code']), (409, 'service_off'))
-        self.switch(True)
+        self.assertEqual((code, res['error']['code']), (409, 'not_connected'))  # no switch: only the Allow is missing
         self.assertEqual(self.google('status', agent=None)[1]['error']['code'], 'caller_unknown')
         self.assertEqual(self.google('mail_send', {'draft_id': 'd1'})[0], 404)  # agents never send
         self.assertEqual(self.google('google_accounts')[0], 404)

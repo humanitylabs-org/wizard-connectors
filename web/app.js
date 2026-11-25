@@ -336,12 +336,10 @@ function renderGoogleAccounts(g){
   const mail=googleUseRow(card,'Mail');
   if(!gmailScope)button('Allow',()=>authorize(a.id,youtubeScope,calendarScope,true),mail).setAttribute('aria-label','Allow Mail');
   else mail.append(element('small','On'));
-  // Google tools for your wizard (switch google-workspace, wizard-connectors#27): Drive, Docs, Sheets and Contacts, read-only.
-  if(state.workspace?.on){
-   const tools=googleUseRow(card,'Drive and Contacts');
-   if(!workspaceScope)button('Allow',()=>authorize(a.id,youtubeScope,calendarScope,false,true),tools).setAttribute('aria-label','Allow Drive and Contacts');
-   else tools.append(element('small','On'));
-  }
+  // Google tools for your wizard (wizard-connectors#27): Drive, Docs, Sheets and Contacts, read-only.
+  const tools=googleUseRow(card,'Drive and Contacts');
+  if(!workspaceScope)button('Allow',()=>authorize(a.id,youtubeScope,calendarScope,false,true),tools).setAttribute('aria-label','Allow Drive and Contacts');
+  else tools.append(element('small','On'));
   // Calendar edits for your wizard (switch google-calendar-edits, wizard-connectors#29): the Google app's calendar tools
   // add, move and delete events on this account. What agents may do stays Calendar > Settings > Agent access.
   if(state.calendar_edits?.on){

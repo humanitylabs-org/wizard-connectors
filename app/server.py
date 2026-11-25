@@ -56,9 +56,7 @@ CALLBACK_REASONS = {
 }
 
 # Drive, Docs, Sheets, Contacts and mail drafts for the agent on this sign-in (wizard-connectors#27).
-WORKSPACE_SWITCH = 'google-workspace'
 WORKSPACE_MESSAGES = {
-    'service_off': 'Google tools for your wizard are off in Connected accounts.',
     'not_connected': 'No Google account has allowed this yet. Open Connected accounts and tap Allow on the account.',
     'permission_missing': 'This Google account has not allowed this yet. Open Connected accounts and tap Allow on it.',
     'google_permission_missing': 'Google refused. Turn on the Drive API and People API in the Google app (setup script --step api), then try again.',
@@ -266,7 +264,7 @@ class Handler(BaseHTTPRequestHandler):
     def google_app_service(self, path, data=None):
         """The Google app (wizard-google) as a consumer of this sign-in (wizard-google#20): its agent tools for Drive,
         Docs, Sheets, Contacts and Gmail drafts at /service/google/v1/<tool> (box app network), with no second Google
-        sign-in. Needs the Google app's grant (an incoming row from wizard-google), this app's google-workspace switch,
+        sign-in. Needs the Google app's grant (an incoming row from wizard-google),
         and says which agent asks (X-Wizard-Agent): held to the owner's mail level, never sends, never a token."""
         if not app_caller(self.headers, 'wizard-google'):
             return self.send(403, {'error': {'code': 'google_grant_required', 'message': 'Only the Google app may use this.'}})
@@ -363,7 +361,6 @@ class Handler(BaseHTTPRequestHandler):
                     "assurance":{"real_data_eligible":False,"host_admin_isolation":False,"network_confinement":os.environ.get('ISOLATED_PACKAGE') == 'true'},
                     "threads":[{"id":k,"title":v["title"],"count":len(v["messages"])} for k,v in THREADS.items()],
                     "mail":{"scope":"https://www.googleapis.com/auth/gmail.modify","agent_access":mail_access.view()},
-                    "workspace":{"on":switch_on(WORKSPACE_SWITCH),"scopes":["https://www.googleapis.com/auth/drive.readonly","https://www.googleapis.com/auth/contacts.readonly"]},
                     "calendar_edits":{"on":switch_on(CALENDAR_EDIT_SWITCH),"scope":CALENDAR_EDIT_SCOPE}})
             if path.startswith("/api/conversations/"):
                 return self.send(200, snapshot(path.rsplit("/",1)[1]))
@@ -463,7 +460,6 @@ class Handler(BaseHTTPRequestHandler):
             if path in ('/api/google/connect','/api/google/reconnect') and set(data) <= {'account','youtube','calendar','gmail','workspace','calendar_edits'}:
                 if any(k in data and type(data[k]) is not bool for k in ('youtube','calendar','gmail','workspace','calendar_edits')): raise ValueError()
                 if data.get('calendar_edits') and not switch_on(CALENDAR_EDIT_SWITCH): return self.send(409,{'error':'service_off'})
-                if data.get('workspace') and not switch_on(WORKSPACE_SWITCH): return self.send(409,{'error':'service_off'})
                 if data.get('account') is not None and not isinstance(data['account'],str): raise ValueError()
                 # Reuse this browser's binding so overlapping sign-in windows all stay valid;
                 # a fresh value per tap would orphan any window opened earlier.
@@ -493,11 +489,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400,{"error":"invalid_request"})
 
     def agent_google(self, name, args, caller='agent:main'):
-        """The agent's Google tools on the Connected accounts sign-in (wizard-connectors#27, switch google-workspace).
+        """The agent's Google tools on the Connected accounts sign-in (wizard-connectors#27, on for everyone).
         Drive and Contacts are read-only; mail keeps the owner's level for agents and never sends."""
         def fail(code, message=None):
             return {'error': {'code': code, 'message': message or WORKSPACE_MESSAGES.get(code) or MAIL_MESSAGES.get(code, 'Google could not do that.')}}
-        if not switch_on(WORKSPACE_SWITCH): return fail('service_off')
         if not isinstance(args, dict): return fail('invalid_arguments', 'Send an object.')
         try:
             if name == 'google_accounts':
@@ -524,7 +519,7 @@ class Handler(BaseHTTPRequestHandler):
                                {"name":"google_app_setup_status","description":"Google app configured flag, exact redirect URI and required APIs/scopes. No credentials.","inputSchema":empty},
                                {"name":"google_app_setup_begin","description":"Owner-authorized Google app setup: mint a single-use internal intake capability, valid 30 minutes. No provider secrets. Reissuing invalidates the previous capability.","inputSchema":empty},
                                {"name":"summary_job_status","description":"Content-free status for an owner-issued job handle.","inputSchema":{"type":"object","properties":{"job_id":{"type":"string"}},"required":["job_id"],"additionalProperties":False}}]}
-            if switch_on(WORKSPACE_SWITCH): result["tools"] += WORKSPACE_MCP_TOOLS
+            result["tools"] += WORKSPACE_MCP_TOOLS
         elif method == "tools/call":
             name, args = params.get("name"), params.get("arguments",{})
             if name == "connector_status" and not args:
@@ -570,11 +565,6 @@ from pathlib import Path as _SwPath
 from urllib.parse import urlsplit as _sw_urlsplit
 
 SWITCHES = [
-    {'id': 'google-workspace', 'name': 'Google tools for your wizard',
-     'description': 'Your wizard lists Drive files, reads Docs and Sheets, looks up contacts and writes Gmail drafts '
-                    'through the Google account connected here: no second Google sign-in. Each account gets an Allow '
-                    'for Drive and Contacts (read-only). Mail keeps the level you choose; agents never send.',
-     'default': False, 'issues': ['humanitylabs-org/wizard-connectors#27']},
     {'id': 'google-calendar-edits', 'name': 'Calendar edits for your wizard',
      'description': 'Your wizard adds, moves and deletes events in your Google Calendar through the Google account '
                     'connected here, with no sign-in in the Google app. Each account gets an Allow for Calendar edits. '
@@ -600,7 +590,7 @@ def _sw_saved():
 
 
 # Switches removed after show-and-tell (now always on). Their saved values are dropped from switches.json.
-_SW_RETIRED = ('grants-panel', 'gmail-for-mail')
+_SW_RETIRED = ('grants-panel', 'gmail-for-mail', 'google-workspace')
 
 
 def _sw_prune_retired():

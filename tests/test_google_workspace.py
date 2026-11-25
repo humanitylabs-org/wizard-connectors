@@ -1,4 +1,4 @@
-"""Google tools for the agent on the Connected accounts sign-in (wizard-connectors#27, switch google-workspace).
+"""Google tools for the agent on the Connected accounts sign-in (wizard-connectors#27, on for everyone).
 
 Real handlers, RPC and broker; fake Google (no network, no real account).
 """
@@ -54,6 +54,7 @@ class GoogleWorkspaceTests(BrokerHTTPTests):
         Path(os.environ['DATA_DIR']).mkdir(parents=True, exist_ok=True)
 
     def switch(self, on):
+        # The google-workspace switch is retired (show-and-tell yes, #27): a stale saved value changes nothing.
         (Path(os.environ['DATA_DIR']) / 'switches.json').write_text(json.dumps({'google-workspace': on}))
 
     def allow(self, **flags):
@@ -76,16 +77,22 @@ class GoogleWorkspaceTests(BrokerHTTPTests):
     def tool_names(self):
         return [t['name'] for t in self.mcp(None, method='tools/list')['tools']]
 
-    def test_off_by_default_no_tools_no_scopes(self):
-        self.assertFalse(self.req('/api/state')[1]['workspace']['on'])
-        self.assertNotIn('google_drive_search', self.tool_names())
-        self.assertEqual(self.mcp('google_drive_search')['error']['code'], 'service_off')
-        self.assertEqual(self.req('/api/google/connect', {'workspace': True})[1]['error'], 'service_off')
-        self.assertNotIn(DRIVE_SCOPE, self.start(False)['scope'])
+    def test_on_for_everyone_no_switch(self):
+        # Approved at show-and-tell (#27): no google-workspace switch; an old saved "off" changes nothing.
+        import server
+        self.assertNotIn('google-workspace', [s['id'] for s in server.switches_doc()['switches']])
+        self.switch(False)
+        self.assertNotIn('workspace', self.req('/api/state')[1])
+        self.assertIn('google_drive_search', self.tool_names())
+        self.assertEqual(self.mcp('google_drive_search')['error']['code'], 'not_connected')
+        server._sw_prune_retired()
+        self.assertEqual(json.loads((Path(os.environ['DATA_DIR']) / 'switches.json').read_text()), {})
+        self.assertNotIn(DRIVE_SCOPE, self.start(False)['scope'])  # plain Connect still asks only for Calendar
+        self.assertIn(DRIVE_SCOPE, self.allow(workspace=True))
 
     def test_one_allow_then_agent_lists_drive_reads_doc_finds_contact_and_drafts(self):
         # The issue's acceptance, on a box with only a Connected accounts sign-in and fake Google.
-        self.switch(True)
+        self.switch(False)
         self.assertIn('google_drive_read', self.tool_names())
         scopes = self.allow(workspace=True, gmail=True)
         self.assertTrue({DRIVE_SCOPE, CONTACTS_SCOPE, GMAIL_SCOPE} <= set(scopes))
@@ -109,7 +116,7 @@ class GoogleWorkspaceTests(BrokerHTTPTests):
         self.assertNotIn('google_mail_send', self.tool_names())  # agents never send
 
     def test_mail_keeps_the_owners_level_and_missing_allow_is_plain(self):
-        self.switch(True)
+        self.switch(False)
         self.allow(calendar=True)
         self.assertEqual(self.mcp('google_drive_search')['error']['code'], 'not_connected')
         self.assertEqual(self.mcp('google_drive_search', {'account': 'fixture@example.invalid'})['error']['code'],
