@@ -1,5 +1,5 @@
 """Calendar edits for the agent through the Google app on the Connected accounts sign-in (wizard-connectors#29,
-switch google-calendar-edits). Real handlers, RPC and broker; fake Google (no network, no real account).
+on for everyone). Real handlers, RPC and broker; fake Google (no network, no real account).
 """
 import json
 import os
@@ -41,18 +41,24 @@ class CalendarEditTests(GoogleAppServiceTests):
             return self.req('/service/google/v1/calendar_status', owner=False, headers=h)
         return self.req('/service/google/v1/' + tool, data if data is not None else {}, owner=False, headers=h)
 
-    def test_off_by_default_no_scope_and_refused(self):
+    def test_on_for_everyone_no_switch(self):
+        # Approved at show-and-tell (#29): no google-calendar-edits switch; an old saved "off" changes nothing.
+        import server
+        self.assertNotIn('google-calendar-edits', [s['id'] for s in server.switches_doc()['switches']])
+        self.edits(False)
         state = self.req('/api/state')[1]
-        self.assertFalse(state['calendar_edits']['on'])
-        self.assertEqual(self.req('/api/google/connect', {'calendar_edits': True})[1]['error'], 'service_off')
-        self.assertNotIn(CALENDAR_EDIT_SCOPE, self.start(False)['scope'])
+        self.assertNotIn('on', state['calendar_edits'])
+        self.assertNotIn(CALENDAR_EDIT_SCOPE, self.start(False)['scope'])  # plain Connect still asks only for read
         code, res, _ = self.cal('calendar_http', {'method': 'POST', 'url': EVENTS, 'body': {'summary': 'x'}})
-        self.assertEqual((code, res['error']['code']), (409, 'service_off'))
+        self.assertEqual((code, res['error']['code']), (409, 'not_connected'))  # only the Allow is missing
         self.assertEqual(self.calendar_calls, [])
+        server._sw_prune_retired()
+        self.assertEqual(json.loads((Path(os.environ['DATA_DIR']) / 'switches.json').read_text()), {})
+        self.assertIn(CALENDAR_EDIT_SCOPE, self.allow(calendar_edits=True))
 
     def test_allow_then_google_app_creates_moves_and_deletes_an_event(self):
-        # The issue's done-when on this side: only a Connected accounts sign-in, the switch on, the owner's Allow.
-        self.edits(True)
+        # The issue's done-when on this side: only a Connected accounts sign-in and the owner's Allow.
+        self.edits(False)  # retired switch: a stale value changes nothing
         code, res, _ = self.cal('calendar_http', {'method': 'POST', 'url': EVENTS, 'body': {'summary': 'x'}})
         self.assertEqual((code, res['error']['code']), (409, 'not_connected'))
         scopes = self.allow(calendar_edits=True)
@@ -75,7 +81,7 @@ class CalendarEditTests(GoogleAppServiceTests):
         self.assertEqual((code, res['response']), (200, {}))
 
     def test_only_the_google_app_says_who_and_stays_on_the_events_path(self):
-        self.edits(True)
+        self.edits(False)  # retired switch: a stale value changes nothing
         self.allow(calendar_edits=True)
         mail = self.grant(caller='wizard-mail')
         h = {**mail, 'Host': 'wizard-connectors-calendar:8799', 'X-Wizard-Agent': 'main'}
@@ -97,7 +103,7 @@ class CalendarEditTests(GoogleAppServiceTests):
         self.assertEqual(self.cal('calendar_http', {'method': 'GET', 'url': ok})[0], 200)
 
     def test_account_choice_and_google_errors_keep_the_sign_in(self):
-        self.edits(True)
+        self.edits(False)  # retired switch: a stale value changes nothing
         self.allow(calendar=True)
         code, res, _ = self.cal('calendar_http', {'method': 'GET', 'url': EVENTS, 'account': 'fixture@example.invalid'})
         self.assertEqual(res['error']['code'], 'permission_missing')

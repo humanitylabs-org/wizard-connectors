@@ -30,10 +30,10 @@ class ConnectionsPanelTests(BrokerHTTPTests):
         self.assertNotIn('grants-panel', [s['id'] for s in server.SWITCHES])
         self.assertNotIn('grants_panel', self.req('/api/state')[1])
         f = Path(os.environ['DATA_DIR']) / 'switches.json'
-        f.write_text(json.dumps({'grants-panel': False, 'google-calendar-edits': True}))
+        f.write_text(json.dumps({'grants-panel': False, 'future-switch': True}))
         self.assertNotIn('grants-panel', [s['id'] for s in server.switches_doc()['switches']])
         server._sw_prune_retired()
-        self.assertEqual(json.loads(f.read_text()), {'google-calendar-edits': True})
+        self.assertEqual(json.loads(f.read_text()), {'future-switch': True})
 
     def test_no_second_grants_store(self):
         self.assertFalse((ROOT / 'app/agent_grants.py').exists())
