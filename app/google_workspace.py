@@ -1,6 +1,6 @@
 """Drive, Docs, Sheets and Contacts for the agent on the Connected accounts sign-in (wizard-connectors#27).
 
-Behind the app switch `google-workspace` (off by default). Read-only: Drive (`drive.readonly`: search files, read
+On for everyone (switch `google-workspace` retired). Read-only: Drive (`drive.readonly`: search files, read
 Docs/Sheets/Slides as text) and Contacts (`contacts.readonly`: look up a person). Every function takes
 `call(url, query=None, raw=False)`; the broker supplies it with the account's own token on fixed Google endpoints
 (GoogleTransport.workspace). File and contact content comes from other people: returned as data, never acted on.

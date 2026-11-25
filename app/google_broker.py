@@ -27,7 +27,7 @@ CALENDAR = 'https://www.googleapis.com/auth/calendar.readonly'
 # Gmail for Mail (wizard-connectors#15, on for everyone): read, search, label changes and drafts. Sending
 # stays the owner's tap in Mail; agents never send (mail_access.py).
 GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
-# Drive, Docs, Sheets and Contacts for the agent (wizard-connectors#27, switch `google-workspace`): read-only.
+# Drive, Docs, Sheets and Contacts for the agent (wizard-connectors#27): read-only.
 DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
 CONTACTS_SCOPE = 'https://www.googleapis.com/auth/contacts.readonly'
 WORKSPACE_SCOPES = {'drive': DRIVE_SCOPE, 'contacts': CONTACTS_SCOPE}
@@ -720,7 +720,7 @@ class Broker:
         return {'contract': gmail_mail.CONTRACT, 'source': 'google', 'via': 'own-client', 'account': email, **result}
 
 
-    # ---------- Drive, Docs, Sheets and Contacts for the agent (wizard-connectors#27, switch google-workspace) ----------
+    # ---------- Drive, Docs, Sheets and Contacts for the agent (wizard-connectors#27) ----------
     def workspace_status(self):
         """Accounts and which Google tools each has allowed. No content, no tokens."""
         with self.lock:

@@ -1,12 +1,11 @@
-# Google tools for your wizard (switch `google-workspace`, off by default)
+# Google tools for your wizard (on for everyone)
 
-wizard-connectors#27: Connected accounts is WizardOS's one Google connection (James, 18 Nov 2026). With this switch on,
-the agent lists Drive files, reads Docs/Sheets/Slides, looks up contacts and writes Gmail drafts through the Google
+wizard-connectors#27: Connected accounts is WizardOS's one Google connection (James, 18 Nov 2026). The agent lists Drive files, reads Docs/Sheets/Slides, looks up contacts and writes Gmail drafts through the Google
 account connected here, with no second Google sign-in and no Google app (`wizard-google`) needed.
 
 ## Owner side
 
-- Tracker Try it: `connected-accounts:google-workspace`. Each Google account card gets a **Drive and Contacts** row
+- Each Google account card gets a **Drive and Contacts** row
   (and the **Mail** row). **Allow** opens Google's screen once and adds read-only Drive
   (`https://www.googleapis.com/auth/drive.readonly`) and Contacts (`https://www.googleapis.com/auth/contacts.readonly`)
   to the account's other services. Google's Allow is the owner's only step.
@@ -44,8 +43,7 @@ this sign-in, so it needs no Google sign-in of its own. Base: `provider_endpoint
 declares `uses: [connected-accounts]`).
 
 - Every request needs the Google app's App Manager grant (`X-Wizard-Grant`, an incoming row `from: wizard-google`) and
-  names the agent (`X-Wizard-Agent: <name>`); without it 400 `caller_unknown`. This switch (`google-workspace`) must be
-  on, else 409 `service_off`.
+  names the agent (`X-Wizard-Agent: <name>`); without it 400 `caller_unknown`.
 - `GET /service/google/v1/status`: the `google_accounts` answer. `POST /service/google/v1/<tool>` with the tool's
   arguments for `drive_search`, `drive_read`, `contacts_search`, `mail_search`, `mail_get`, `mail_draft`: the same
   answers as `google_drive_search`, `google_drive_read`, `google_contacts_search`, `google_mail_search`,
