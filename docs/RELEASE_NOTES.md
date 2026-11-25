@@ -1,3 +1,7 @@
+# Connected accounts 0.8.9
+
+- **Google tools for your wizard on for everyone** (humanitylabs-org/wizard-connectors#27, approved at show-and-tell). The `google-workspace` switch is gone: the agent (and the Google app) can list Drive files, read Docs and Sheets, look up contacts and write Gmail drafts through the Google account connected here with no switch, and each Google account always shows the Drive and Contacts row. Any saved value for the switch is cleared at startup.
+
 # Connected accounts 0.8.8
 
 - **Gmail for Mail on for everyone** (humanitylabs-org/wizard-connectors#15, approved at show-and-tell). The `gmail-for-mail` switch is gone: Mail reads, searches and drafts Gmail through the Google account connected here with no switch, each Google account always shows the Mail row and "Agents and your mail" always shows. Any saved value for the switch is cleared at startup.

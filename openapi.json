@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Connected accounts synthetic preview",
-    "version": "0.8.8"
+    "version": "0.8.9"
   },
   "paths": {
     "/api/google/setup/intake": {
