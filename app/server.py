@@ -140,14 +140,25 @@ def mail_error(code, message=None):
     return MAIL_STATUS.get(code, 409), {'error': {'code': code, 'message': message or MAIL_MESSAGES.get(code, 'Gmail could not do that.')}}
 
 
+# The page and its own files. With the browser owner boundary on (wizard-os#133) the page runs in a sandboxed frame
+# (an opaque origin), so every file it loads arrives as Sec-Fetch-Site: cross-site, with no Origin (a classic script or
+# style) or Origin: null. Those public files (never the page itself, the API or anything else) are served to it
+# (PASSIVE); the Host check still applies (wizard-ux#1668).
+STATIC = {"/": "index.html", "/app.js": "app.js", "/connections.js": "connections.js", "/boot.js": "boot.js", "/styles.css": "styles.css",
+          "/wizard-ui.css": "wizard-ui.css", "/google-callback.js": "google-callback.js"}
+PASSIVE = frozenset(p for p in STATIC if p != "/")
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "ConnectedAccounts"
     def log_message(self, *args):
         pass # No paths, payloads or provider exceptions in ordinary logs.
 
-    def send(self, status, value, kind="application/json", cookie=None):
+    def send(self, status, value, kind="application/json", cookie=None, shared=False):
         body = json.dumps(value).encode() if kind == "application/json" else value
         self.send_response(status)
+        if shared:
+            self.send_header("Access-Control-Allow-Origin", "*")  # a public file for the sandboxed page; no credentials
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -159,10 +170,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def trusted(self, callback=False):
+    def opaque_file(self, path):
+        # The sandboxed page's own file load (see PASSIVE): no Origin, or Origin: null, and a public file only.
+        return path in PASSIVE and self.headers.get("Origin") in (None, "null")
+
+    def trusted(self, callback=False, passive=False):
         host = self.headers.get("Host", "").split(":")[0]
         if host not in HOSTS or not re.fullmatch(r'[A-Za-z0-9.-]+(?::[0-9]{1,5})?', self.headers.get('Host', '')):
             self.send(403, {"error": "host_denied"}); return False
+        if passive:
+            return True
         origin = self.headers.get("Origin")
         allowed = ORIGINS | {"http://" + self.headers.get("Host", ""), "https://" + self.headers.get("Host", "")}
         if origin and origin not in allowed:
@@ -319,7 +336,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.mail_service(path)
         if path.startswith('/service/google/v1/'):
             return self.google_app_service(path)
-        if not self.trusted(callback=path in ('/api/google/callback','/privacy')): return
+        if not self.trusted(callback=path in ('/api/google/callback','/privacy'), passive=self.opaque_file(path)): return
         if path == '/privacy':
             return self.send(200,(ROOT/'web/privacy.html').read_bytes(),'text/html; charset=utf-8')
         if path == '/api/google/callback':
@@ -346,10 +363,9 @@ class Handler(BaseHTTPRequestHandler):
             # wizard-connectors#38: the host copy of the app skill is SKILL.md only, so the
             # agent fetches the shipped setup script and its registry from here (public code).
             return self.send(200, (ROOT / 'skill/scripts' / SKILL_SCRIPTS[path]).read_bytes(), 'text/x-python; charset=utf-8')
-        static = {"/": "index.html", "/app.js":"app.js", "/connections.js":"connections.js", "/boot.js":"boot.js", "/styles.css":"styles.css", "/wizard-ui.css":"wizard-ui.css", "/google-callback.js":"google-callback.js"}
-        if path in static:
-            p = ROOT / "web" / static[path]
-            return self.send(200, p.read_bytes(), mimetypes.guess_type(p.name)[0] or "text/plain")
+        if path in STATIC:
+            p = ROOT / "web" / STATIC[path]
+            return self.send(200, p.read_bytes(), mimetypes.guess_type(p.name)[0] or "text/plain", shared=path in PASSIVE)
         if not self.human(): return self.send(401, {"error":"owner_auth_required"})
         try:
             if path == "/api/state":
