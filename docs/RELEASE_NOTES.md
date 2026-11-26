@@ -1,3 +1,7 @@
+# Connected accounts 0.9.1
+
+- **Agent access works under the browser boundary** (humanitylabs-org/wizard-ux#1668). With the box's browser boundary on, the app's page runs sandboxed: it now loads its own scripts and styles (they were refused as cross-site, so the page stayed bare), and Agent access asks the shell to read and set which agents may use each account app (the shell's switch `wizard/boundary-agent-access`, off by default). With that switch off the screen says to choose it in App Manager, under Connections, as before.
+
 # Connected accounts 0.9.0
 
 - **Calendar edits for your wizard on for everyone** (humanitylabs-org/wizard-connectors#29, approved at show-and-tell). The `google-calendar-edits` switch is gone: each Google account always shows the Calendar edits row, and the Google app's calendar tools add, move and delete events through the account that allowed it, with no switch. Calendar > Settings > Agent access still decides what agents may do. Any saved value for the switch is cleared at startup. Connected accounts now has no feature switches.
