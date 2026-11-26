@@ -11,7 +11,7 @@ services:
   # advertised host, so WAM's per-edge link network resolves it; no shared main network.
   wizard-connectors-calendar:
     <<: *security
-    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-b7156f269a14494e759991bce92d8dce35972d59@sha256:dcfd0f4b37bbe6080de9d70e9daf52956d1465fbe1696c9e93103bf4412554ed
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-90959904f05679246722e16af398be5ee9f37cc1@sha256:2b7a3539c9f0d3e917eb40faaddbdfe84e029e35541d248c04e3c58f0575cc2c
     command: [python, app/ingress.py]
     networks: [ingress-lane, edge]
     x-runtipi:
@@ -19,7 +19,7 @@ services:
       internal_port: 8799
   wizard-connectors:
     <<: *security
-    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-b7156f269a14494e759991bce92d8dce35972d59@sha256:dcfd0f4b37bbe6080de9d70e9daf52956d1465fbe1696c9e93103bf4412554ed
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-90959904f05679246722e16af398be5ee9f37cc1@sha256:2b7a3539c9f0d3e917eb40faaddbdfe84e029e35541d248c04e3c58f0575cc2c
     environment:
       PORT: "8799"
       DATA_DIR: /data
@@ -39,7 +39,7 @@ services:
     networks: [ingress-lane, google-lane, private-lane, media-lane]
   google-broker:
     <<: *security
-    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-b7156f269a14494e759991bce92d8dce35972d59@sha256:dcfd0f4b37bbe6080de9d70e9daf52956d1465fbe1696c9e93103bf4412554ed
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-90959904f05679246722e16af398be5ee9f37cc1@sha256:2b7a3539c9f0d3e917eb40faaddbdfe84e029e35541d248c04e3c58f0575cc2c
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: google
@@ -56,7 +56,7 @@ services:
     networks: [google-lane, google-egress]
   media-worker:
     <<: *security
-    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-b7156f269a14494e759991bce92d8dce35972d59@sha256:dcfd0f4b37bbe6080de9d70e9daf52956d1465fbe1696c9e93103bf4412554ed
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-90959904f05679246722e16af398be5ee9f37cc1@sha256:2b7a3539c9f0d3e917eb40faaddbdfe84e029e35541d248c04e3c58f0575cc2c
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: media
@@ -67,7 +67,7 @@ services:
     networks: [media-lane, media-egress]
   private-worker:
     <<: *security
-    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-b7156f269a14494e759991bce92d8dce35972d59@sha256:dcfd0f4b37bbe6080de9d70e9daf52956d1465fbe1696c9e93103bf4412554ed
+    image: ghcr.io/humanitylabs-org/wizard-connectors:sha-90959904f05679246722e16af398be5ee9f37cc1@sha256:2b7a3539c9f0d3e917eb40faaddbdfe84e029e35541d248c04e3c58f0575cc2c
     command: [python, app/services.py]
     environment:
       SERVICE_ROLE: private
