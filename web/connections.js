@@ -29,8 +29,15 @@
   if(!value||!Array.isArray(value.agents))return null;
   return value.agents.filter(a=>a&&typeof a.id==='string').map(a=>({id:a.id,label:typeof a.label==='string'&&a.label?a.label:a.id,enabled:a.enabled===true,privacy:a.privacy==='private'?'private':'standard'}));
  }
+ // With the browser boundary on (wizard-os#133) this page runs sandboxed and its own owner call carries no token, so
+ // the shell reads and sets the ticks for it (WizardApp.agentAccess, wizard-ux#1668, the shell's switch
+ // wizard/boundary-agent-access). Where the shell does not offer that, the owner route below is used as before.
+ const boxed=()=>root.origin==='null'&&!!(root.WizardApp&&root.WizardApp.agentAccess);
  // One app's agent ticks. {state:'ok', agents} | {state:'absent'} (not installed) | {state:'unavailable'}.
  async function readApp(fetchFn,id){
+  if(boxed()){
+   try{const v=await root.WizardApp.agentAccess.read(id);if(v&&v.state==='absent')return {state:'absent'};const agents=agentsOf(v);if(agents)return {state:'ok',agents};}catch{}
+  }
   let r;
   try{r=await fetchFn(BASE+encodeURIComponent(id)+'/agents',opts('GET'));}catch{return {state:'unavailable'};}
   let d=null;try{d=await r.json();}catch{d=null;}
@@ -107,6 +114,10 @@
  }
  // Sets exactly which agents may use one app (the owner's tick), then answers the app's ticks as now stored.
  async function setAgents(fetchFn,id,ids){
+  if(boxed()){
+   let v=null;try{v=await root.WizardApp.agentAccess.set(id,ids);}catch{v=null;}
+   const agents=v?agentsOf(v):null;if(agents)return agents;
+  }
   const r=await fetchFn(BASE+encodeURIComponent(id)+'/agents',opts('PUT',{agents:ids}));
   let d=null;try{d=await r.json();}catch{d=null;}
   const agents=r.ok?agentsOf(d):null;

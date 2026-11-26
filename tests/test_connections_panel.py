@@ -240,10 +240,65 @@ class ConnectionsScriptTests(unittest.TestCase):
         self.assertIn('WizConnections.setLevel(', app_js)
 
 
+BOXED_CHECK = r"""
+// Browser boundary on (wizard-ux#1668): this page is sandboxed (origin 'null') and its own owner call carries no token,
+// so the shell reads and sets the ticks (WizardApp.agentAccess). When the shell does not offer it (its switch off), the
+// owner route is tried as before.
+const C = require(process.argv[1]);
+const fetched = [], asked = [];
+let shellOn = true;
+const store = {'connected-accounts': [{id:'hermes',label:'Hermes',enabled:true,privacy:'standard'}], 'messenger': [{id:'hermes',label:'Hermes',enabled:false,privacy:'standard'},{id:'oscar',label:'Oscar',enabled:true,privacy:'private'}]};
+globalThis.origin = 'null';
+globalThis.WizardApp = {agentAccess: {
+  read: async id => { asked.push(['read', id]); if (!shellOn) throw new Error('Agent access is not available here'); return store[id] ? {state:'ok', agents: store[id]} : {state:'absent'}; },
+  set: async (id, ids) => { asked.push(['set', id, ids.join()]); if (!shellOn) throw new Error('Agent access is not available here'); store[id] = store[id].map(a => ({...a, enabled: ids.includes(a.id)})); return {state:'ok', agents: store[id]}; },
+}};
+// The page's own owner call under the boundary: refused (no token).
+const own = async (url, init) => { fetched.push([init.method, url]); return {status: 401, ok: false, json: async () => ({error: 'owner_auth_required'})}; };
+(async () => {
+  const out = {};
+  const view = await C.load(own);
+  out.reachable = view.reachable;
+  out.apps = view.apps.map(a => [a.id, a.state, (a.agents || []).map(x => x.id + ':' + x.enabled + ':' + x.privacy)]);
+  out.fetchedAgents = fetched.filter(c => c[1].startsWith('/wizard/v1/')).length;
+  out.set = (await C.setAgents(own, 'messenger', ['hermes', 'oscar'])).map(a => a.id + ':' + a.enabled);
+  out.asked = asked.filter(a => a[0] === 'set');
+  shellOn = false; fetched.length = 0;
+  const off = await C.load(own);
+  out.off = [off.reachable, off.apps.map(a => a.id + ':' + a.state)];
+  out.offFetched = fetched.filter(c => c[1].startsWith('/wizard/v1/')).length;
+  try { await C.setAgents(own, 'messenger', []); out.offSet = 'no'; } catch (e) { out.offSet = e.message; }
+  console.log(JSON.stringify(out));
+})();
+"""
+
+
+@unittest.skipUnless(shutil.which('node'), 'node not installed')
+class BoundaryScriptTests(unittest.TestCase):
+    def test_sandboxed_page_asks_the_shell(self):
+        run = subprocess.run(['node', '-e', BOXED_CHECK, str(ROOT / 'web/connections.js')], capture_output=True, text=True, timeout=30)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        out = json.loads(run.stdout)
+        # The shell answered every app: ticks shown, no owner call from the page for them.
+        self.assertTrue(out['reachable'])
+        self.assertEqual(out['apps'], [
+            ['connected-accounts', 'ok', ['hermes:true:standard']],
+            ['messenger', 'ok', ['hermes:false:standard', 'oscar:true:private']],
+        ])
+        self.assertEqual(out['fetchedAgents'], 0)
+        # A change goes to the shell, which answers what the Agent Service now keeps.
+        self.assertEqual(out['set'], ['hermes:true', 'oscar:true'])
+        self.assertEqual(out['asked'], [['set', 'messenger', 'hermes,oscar']])
+        # The shell's switch off: the page tries its own owner call as before and shows the fallback.
+        self.assertEqual(out['off'], [False, ['connected-accounts:unavailable']])
+        self.assertGreater(out['offFetched'], 0)
+        self.assertEqual(out['offSet'], 'owner_auth_required')
+
+
 def load_tests(loader, tests, pattern):
     # Only this file's own tests: the BrokerHTTPTests base would otherwise run every one of its tests again here.
     suite = unittest.TestSuite()
-    for case in (ConnectionsPanelTests, ConnectionsScriptTests, GoogleLevelScriptTests, MicrosoftLevelScriptTests):
+    for case in (ConnectionsPanelTests, ConnectionsScriptTests, GoogleLevelScriptTests, MicrosoftLevelScriptTests, BoundaryScriptTests):
         for name in loader.getTestCaseNames(case):
             if name in case.__dict__:
                 suite.addTest(case(name))

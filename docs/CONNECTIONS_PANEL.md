@@ -30,12 +30,16 @@ installed and is left out.
 ## When the Agent Service can't be asked
 
 On a box with the browser boundary on (wizard-os#133) the sandboxed page carries no shell token, so the Agent Service
-refuses it; a local preview has no Agent Service at all. The panel then still lists this app's accounts and Mail's
-level, and says the ticks are set in App Manager > Connections. Nothing is guessed or cached.
+refuses it. There the page asks the shell instead (`WizardApp.agentAccess.read(appId)` / `.set(appId, agentIds)`,
+wizard-ux#1668, the shell's switch `wizard/boundary-agent-access`): the shell reads and sets the same ticks with its own
+token, only for Connected accounts and only for the apps listed above, and a change only right after a real tap. Where
+the shell does not offer that (its switch off, an older shell) and in a local preview with no Agent Service at all, the
+panel still lists this app's accounts and Mail's level, and says the ticks are set in App Manager > Connections.
+Nothing is guessed or cached.
 
 ## Follow-ups
 
-- humanitylabs-org/wizard-ux#1668: a bounded shell service so the panel works under the browser boundary.
+- Done: humanitylabs-org/wizard-ux#1668, a bounded shell service so the panel works under the browser boundary.
 - Done: each app's own agent level, still stored and enforced by that app (Messenger: wizard-messenger#342; Google:
   wizard-google#30; Microsoft: wizard-microsoft#10).
 - Enforcing anything new, and folding the connector repos together, are out of this slice.
