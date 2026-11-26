@@ -44,6 +44,29 @@ class ConnectionsPanelTests(BrokerHTTPTests):
         self.assertNotEqual(code, 200)
         self.assertFalse(any(p.name.startswith('agent-grants') for p in Path(os.environ['DATA_DIR']).iterdir()))
 
+    def test_sandboxed_page_loads_its_own_files(self):
+        # Browser boundary on (wizard-ux#1668): the page runs in a sandboxed frame, so its own scripts and styles arrive
+        # as Sec-Fetch-Site: cross-site with no Origin (or Origin: null). Those public files are served; nothing else is.
+        x = {'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Mode': 'no-cors'}
+        for f in ('/boot.js', '/app.js', '/connections.js', '/styles.css', '/wizard-ui.css'):
+            code, _, h = self.req(f, owner=False, headers=x)
+            self.assertEqual(code, 200, f)
+            self.assertEqual(h['Access-Control-Allow-Origin'], '*', f)
+            self.assertIsNone(h.get('Access-Control-Allow-Credentials'), f)
+            self.assertEqual(self.req(f, owner=False, headers={**x, 'Origin': 'null', 'Sec-Fetch-Mode': 'cors'})[0], 200, f)
+            # Another site's page asking with its own Origin is still refused.
+            self.assertEqual(self.req(f, owner=False, headers={**x, 'Origin': 'https://evil.example'})[0], 403, f)
+        # The page itself, the API and other paths stay same-site only, also for a sandboxed page.
+        for path in ('/', '/api/state', '/healthz', '/privacy.html'):
+            self.assertEqual(self.req(path, headers=x)[0], 403, path)
+            self.assertEqual(self.req(path, headers={**x, 'Origin': 'null'})[0], 403, path)
+        # The Host check still applies to the files.
+        self.assertEqual(self.req('/app.js', owner=False, headers={**x, 'Host': 'evil.example'})[0], 403)
+        # A same-site load is unchanged (no CORS header on the page).
+        code, _, h = self.req('/', owner=False)
+        self.assertEqual(code, 200)
+        self.assertIsNone(h.get('Access-Control-Allow-Origin'))
+
     def test_page_script_is_served(self):
         code, body, _ = self.req('/connections.js')
         self.assertEqual(code, 200)
